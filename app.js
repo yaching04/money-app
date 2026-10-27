@@ -75,8 +75,9 @@
     const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
     const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v)); return out;
   }
-  function chartSvg(ds, target) {
-    const W = 360, padL = 48, padR = 8, top = 12, hL = 138, gap = 16, hB = 86, bot = 22;
+  function chartSvg(ds, target, mode) {
+    const bars = mode === 'bars';   // 'bars'=日別の収入・支出（集計タブ） / 既定=残高の線（ホーム）
+    const W = 360, padL = bars ? 34 : 48, padR = 8, top = 16, hL = bars ? 0 : 150, gap = 0, hB = bars ? 140 : 0, bot = 22;
     const n = ds.days.length, cw = (W - padL - padR) / n, H = top + hL + gap + hB + bot;
     const X = (i) => padL + (i + 0.5) * cw;
     const range = (ds.max - ds.min) || Math.max(1, Math.abs(ds.max) * 0.1);
@@ -92,20 +93,21 @@
     // 週末の薄い背景
     ds.days.forEach((d, i) => { const w = new Date(d.date + 'T00:00:00Z').getUTCDay(); if (w === 0 || w === 6) s += `<rect x="${padL + i * cw}" y="${top}" width="${cw}" height="${hL + gap + hB}" fill="${w === 0 ? '#fef2f2' : '#eff6ff'}" opacity=".55"/>`; });
     // 横グリッド
-    niceTicks(lo, hi).forEach((v) => { if (v === 0 && lo < 0) return; const y = Y(v); s += `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="#e2e8f0"/><text x="${padL - 4}" y="${y + 4}" text-anchor="end" class="cs-t">${short(v)}</text>`; });
-    if (lo < 0 && hi > 0) s += `<line x1="${padL}" x2="${W - padR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#dc2626" stroke-dasharray="3 3"/><text x="${padL - 4}" y="${Y(0) + 4}" text-anchor="end" class="cs-t" fill="#dc2626">0</text>`;
+    if (!bars) niceTicks(lo, hi).forEach((v) => { if (v === 0 && lo < 0) return; const y = Y(v); s += `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="#e2e8f0"/><text x="${padL - 4}" y="${y + 4}" text-anchor="end" class="cs-t">${short(v)}</text>`; });
+    if (!bars && lo < 0 && hi > 0) s += `<line x1="${padL}" x2="${W - padR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#dc2626" stroke-dasharray="3 3"/><text x="${padL - 4}" y="${Y(0) + 4}" text-anchor="end" class="cs-t" fill="#dc2626">0</text>`;
     // 今日・指定日
     const mark = (date, color, label, dash) => { const i = ds.days.findIndex((d) => d.date === date); if (i < 0) return ''; return `<line x1="${X(i)}" x2="${X(i)}" y1="${top}" y2="${top + hL + gap + hB}" stroke="${color}" stroke-width="1.5" ${dash ? 'stroke-dasharray="2 3"' : ''}/><text x="${X(i) > W - 28 ? W - 2 : X(i)}" y="${top - 2}" text-anchor="${X(i) > W - 28 ? 'end' : 'middle'}" class="cs-t" fill="${color}">${label}</text>`; };
-    s += mark(todayStr(), '#64748b', '今日', true) + mark(target, '#1d4ed8', '指定日', false);
+    s += mark(todayStr(), '#64748b', '今日', true) + (bars ? '' : mark(target, '#1d4ed8', '指定日', false));
     // 残高の線（区間ごと: マイナス=赤 / 仮=破線 / 確定=実線）
-    for (let i = 1; i < n; i++) {
+    for (let i = 1; !bars && i < n; i++) {
       const a = ds.days[i - 1], b = ds.days[i];
       if (a.balance === null || b.balance === null) continue;
       const neg = a.balance < 0 || b.balance < 0, prov = b.prov;
       s += `<line x1="${X(i - 1)}" y1="${Y(a.balance)}" x2="${X(i)}" y2="${Y(b.balance)}" stroke="${neg ? COL.neg : prov ? COL.prov : COL.ok}" stroke-width="2.6" stroke-linecap="round" ${prov ? 'stroke-dasharray="5 4"' : ''}/>`;
     }
-    ds.days.forEach((d, i) => { if (d.balance === null) return; if (d.events.length || i === 0 || d.date === target) s += `<circle cx="${X(i)}" cy="${Y(d.balance)}" r="${d.date === target ? 4.2 : 2.8}" fill="#fff" stroke="${d.neg ? COL.neg : d.prov ? COL.prov : COL.ok}" stroke-width="2"/>`; });
+    if (!bars) ds.days.forEach((d, i) => { if (d.balance === null) return; if (d.events.length || i === 0 || d.date === target) s += `<circle cx="${X(i)}" cy="${Y(d.balance)}" r="${d.date === target ? 4.2 : 2.8}" fill="#fff" stroke="${d.neg ? COL.neg : d.prov ? COL.prov : COL.ok}" stroke-width="2"/>`; });
     // 棒グラフ（収入=上・支出=下。仮の分は斜線）
+    if (bars) {
     const base = top + hL + gap + hB / 2;
     const mx = Math.max(1, ...ds.days.map((d) => Math.max(d.debit, d.income)));
     const sc = (hB / 2 - 3) / mx;
@@ -120,11 +122,12 @@
         if (hc) s += `<rect x="${x}" y="${base - hc}" width="${bw}" height="${hc}" fill="#15803d"/>`;
         if (hp) s += `<rect x="${x}" y="${base - hc - hp}" width="${bw}" height="${hp}" fill="url(#hatchG)" stroke="#15803d" stroke-dasharray="2 1.5" stroke-width=".8"/>`; }
     });
+    }
     // 日付ラベル
     const labs = [1, 5, 10, 15, 20, 25, n].filter((d, i, a) => a.indexOf(d) === i && (d === n ? n - 25 >= 3 || n === 25 : true));
     labs.forEach((d) => { s += `<text x="${X(d - 1)}" y="${H - 7}" text-anchor="middle" class="cs-t">${d}</text>`; });
     // タップ領域（その日を指定日にする）
-    ds.days.forEach((d, i) => { s += `<rect x="${padL + i * cw}" y="0" width="${cw}" height="${H}" fill="transparent" data-act="pickday" data-date="${d.date}"/>`; });
+    ds.days.forEach((d, i) => { s += `<rect x="${padL + i * cw}" y="0" width="${cw}" height="${H}" fill="transparent" ${bars ? '' : `data-act="pickday" data-date="${d.date}"`}/>`; });
     return s + '</svg>';
   }
 
@@ -141,6 +144,15 @@
   const needAcctGuide = () => `<div class="guide"><b>まず口座を登録しましょう。</b><br>口座を登録すると、この画面が使えるようになります。<button class="btn sm" style="margin-top:8px" data-act="add-account">口座を登録する</button> <button class="btn sm sec" data-tab="home" style="margin-top:8px">はじめに戻る</button></div>`;
 
   /* ---------- ホーム ---------- */
+  const ui = { inbox: false, all: false, help: false };   // ホームの開閉状態（保存しない）
+  function homeRow(e) {
+    const p = L.parse(e.date), sign = e.delta < 0 ? '−' : '+';
+    const tap = e.variable ? `data-act="enter" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}"` : '';
+    return `<div class="hrow ${e.confirmed ? '' : 'prov'} ${e.variable ? 'tap' : ''}" ${tap}>
+      <div class="d">${p.m}/${p.d}<small>${dow(e.date)}</small></div>
+      <div class="m"><b>${esc(e.label)}</b>${e.negative ? `<small class="neg-t">この後の残高 ${yen(e.balance)} ⚠</small>` : ''}</div>
+      <div class="a ${e.delta < 0 ? '' : 'pos-t'} ${e.confirmed ? '' : 'prov-amt'}">${sign}${e.confirmed ? '' : '≈'}${yenAbs(e.amount)}${e.confirmed ? '' : '<br><span class="tag prov">仮</span>'}</div></div>`;
+  }
   function renderHome() {
     if (!state.accounts.length) return renderWelcome();
     const target = getTarget(), today = todayStr(), scope = getScope();
@@ -150,61 +162,67 @@
     const ds = L.dailySeries(state, scope, vm);
     const prov = pr.confirmedThrough !== null && !pr.beforeAsOf;
     const pending = L.computePending(state, today);
-    let h = `<div class="card hero ${pr.negative ? 'neg' : ''}">
-      <label for="target">この日時点の口座残高見込み</label>
-      <input type="date" id="target" value="${target}">
-      <div class="big">${prov ? '≈' : ''}${yen(pr.endBalance)} <span class="hero-tag">${prov ? '仮' : '確定額'}</span></div>
-      <div class="small">${ymd(target)} 時点（${scope === 'all' ? '口座合計' : esc(byId(state.accounts, scope).name)}）</div>`;
-    if (pr.beforeAsOf) h += `<div class="small" style="margin-top:6px">※ 口座の残高の日付より前の日付です。その日付時点の残高を表示しています。</div>`;
-    else if (!prov) h += `<div class="small" style="margin-top:6px">✅ この日までの予定はすべて確定額です${pending.length ? `<br>※ 下の入力待ち${pending.length}件は、この見込みの対象外（指定日より後、または選択中以外の口座）の分です` : ''}</div>`;
-    else h += `<div class="small" style="margin-top:6px">${pr.confirmedThrough < pr.minAsOf ? '⏳ 残高の日付の翌日から仮の金額を含みます' : '✅ ' + md(pr.confirmedThrough) + ' までは確定額のみ。以降は仮の金額を含みます'}</div>`;
+    const scopeName = scope === 'all' ? '口座合計' : esc(byId(state.accounts, scope).name);
+
+    // 1) 大きな数字 1つ + バッジ 1つ
+    let h = `<section class="hero ${pr.negative ? 'neg' : ''}">
+      <div class="hero-bar"><input type="date" id="target" value="${target}" aria-label="見込みを見る日付">
+        ${state.accounts.length > 1 ? `<select id="pacc" aria-label="口座">${`<option value="all" ${scope === 'all' ? 'selected' : ''}>口座合計</option>` + state.accounts.map((a) => `<option value="${a.id}" ${scope === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select>` : ''}
+        <button class="q" data-act="toggle-help" aria-label="説明を表示" aria-expanded="${ui.help}">？</button></div>
+      <div class="big"><span>${prov ? '≈' : ''}${yen(pr.endBalance)}</span><span class="hero-tag">${prov ? '仮' : '確定額'}</span></div>
+      <div class="small">${ymd(target)} 時点・${scopeName}</div>`;
     if (pr.negative) {
       const f = pr.firstNegative;
       h += `<div class="warn hero-in">⚠ 残高がマイナスになります${f ? '：' + md(f.date) + ' ' + esc(f.label) + ' の後（' + yen(f.balance) + (multi ? '／' + esc(f.accountName) + ' ' + yen(f.accountBalance) : '') + '）' : '（現在マイナスの口座があります）'}${f && f.uncertain ? '<br><small>※ 仮の金額を含む予測です</small>' : ''}</div>`;
-    } else if (!pr.beforeAsOf) h += `<div class="small" style="margin-top:6px">期間中の最低残高 ${yen(pr.minBalance)}（${md(pr.minDate)}）</div>`;
-    h += `<div class="chips">
-      <button class="chip" data-act="quick" data-m="0">今月末</button><button class="chip" data-act="quick" data-m="1">来月末</button>
-      <button class="chip" data-act="quick" data-m="3">3か月後</button><button class="chip" data-act="quick" data-m="-1">今日</button></div>`;
-    if (state.accounts.length > 1) h += `<div class="chips"><button class="chip ${scope === 'all' ? 'on' : ''}" data-act="pacc" data-id="all">合計</button>${state.accounts.map((a) => `<button class="chip ${scope === a.id ? 'on' : ''}" data-act="pacc" data-id="${a.id}">${esc(a.name)}</button>`).join('')}</div>`;
-    h += `</div>`;
-
-    // 入力待ち（インボックス）
-    if (pending.length) {
-      h += `<div class="card inbox"><h2><span>📝 金額の入力待ち（${pending.length}件）</span></h2>
-        <p class="hint">請求額がわかる日になりました。明細などの金額を入力すると、仮の金額が確定額に置き換わります。</p>`;
-      h += pending.map((e) => `<div class="inb-row" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}">
-        <div class="l"><b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${e.kind === 'income' ? '入金' : '引き落とし'}日 ${md(e.date)}${e.date < today ? '（過ぎています）' : ''}・請求額がわかる日 ${md(e.fixDate)}</small><small>仮 ≈${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
-        <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div></div>`).join('');
+    }
+    h += `<div class="chips"><button class="chip" data-act="quick" data-m="-1">今日</button><button class="chip" data-act="quick" data-m="0">今月末</button><button class="chip" data-act="quick" data-m="1">来月末</button><button class="chip" data-act="quick" data-m="3">3か月後</button></div>`;
+    if (ui.help) {
+      const rem = pending.length ? null : L.computeReminders(state, today, 30)[0];
+      h += `<div class="helpbox">`;
+      if (pr.beforeAsOf) h += `<p>口座の残高の日付より前の日付です。その日付時点の残高を表示しています。</p>`;
+      else if (!prov) h += `<p>✅ この日までの予定はすべて確定額です。${pending.length ? `入力待ち${pending.length}件は、この見込みの対象外（指定日より後、または選択中以外の口座）の分です。` : ''}</p>`;
+      else h += `<p>${pr.confirmedThrough < pr.minAsOf ? '⏳ 残高の日付の翌日から仮の金額を含みます。' : '✅ ' + md(pr.confirmedThrough) + ' までは確定額のみ。以降は仮の金額を含みます。'}</p>`;
+      if (!pr.beforeAsOf) h += `<p>期間中の最低残高 ${yen(pr.minBalance)}（${md(pr.minDate)}）</p>`;
+      h += `<p>「仮」は、金額が未入力の変動項目（直近3回の実績平均で計算）です。金額を入力すると確定額に置き換わります。</p>`;
+      if (rem) h += `<p>🔔 次に金額を入力する日：${md(rem.date)} ${esc(rem.names.join('、'))}（<a href="#" data-tab="data">通知の設定</a>）</p>`;
       h += `</div>`;
-    } else {
-      const rem = L.computeReminders(state, today, 30)[0];
-      if (rem) h += `<div class="info" style="background:#f0fdfa;color:var(--pri-d);border-color:#99f6e4">🔔 次に金額を入力する日：${md(rem.date)} ${esc(rem.names.join('、'))}（朝8:00にお知らせ・<a href="#" data-tab="data" style="color:inherit">通知の設定</a>）</div>`;
+    }
+    h += `</section>`;
+
+    // 2) 入力待ち：細い黄色の帯。タップで開く
+    if (pending.length) {
+      h += `<section class="band ${ui.inbox ? 'open' : ''}"><button class="band-btn" data-act="toggle-inbox" aria-expanded="${ui.inbox}"><span>📝 入力待ち ${pending.length}件</span><span class="chev">${ui.inbox ? '▲' : '▼'}</span></button>`;
+      if (ui.inbox) {
+        h += `<div class="band-body"><p class="sub">請求額がわかる日になりました。金額を入力すると、仮が確定額に置き換わります。</p>`;
+        h += pending.map((e) => `<div class="inb-row" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}">
+          <div class="l"><b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${e.kind === 'income' ? '入金' : '引き落とし'}日 ${md(e.date)}・請求額がわかる日 ${md(e.fixDate)}</small><small>仮 ≈${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
+          <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div></div>`).join('');
+        h += `</div>`;
+      }
+      h += `</section>`;
     }
 
-    // 月ビュー
+    // 3) 月の残高の線グラフ
     const days = ds.days;
-    const mDebit = days.reduce((s, d) => s + d.debit, 0), mInc = days.reduce((s, d) => s + d.income, 0);
-    const lastBal = [...days].reverse().find((d) => d.balance !== null);
-    h += `<div class="card"><div class="mnav"><button data-act="mnav" data-d="-1" aria-label="前の月">‹</button><b>${ymLabel(vm)}</b><button data-act="mnav" data-d="1" aria-label="次の月">›</button>
+    h += `<section class="sec"><div class="mnav"><button data-act="mnav" data-d="-1" aria-label="前の月">‹</button><b>${ymLabel(vm)}</b><button data-act="mnav" data-d="1" aria-label="次の月">›</button>
       ${vm !== L.monthKey(today) ? '<button class="chip2" data-act="mnav" data-d="0">今月へ</button>' : ''}</div>`;
     if (!ds.hasData) h += `<div class="empty">この月は口座の残高の日付より前のため、予測はありません</div>`;
     else {
       h += chartSvg(ds, target);
       if (days[0].balance === null) h += `<div class="chartnote">※ 口座の残高の日付より前は表示されません</div>`;
-      h += `<div class="legend"><span><i class="ln"></i>確定額</span><span><i class="ln dash"></i>仮</span><span><i class="ln red"></i>マイナス</span><span><i class="bx r"></i>支出</span><span><i class="bx g"></i>収入</span><span><i class="bx hatch"></i>斜線=仮</span></div>`;
+      h += `<div class="legend"><span><i class="ln"></i>確定額</span><span><i class="ln dash"></i>仮</span><span><i class="ln red"></i>マイナス</span></div>`;
       const td = days.find((d) => d.date === target);
-      h += `<div class="readout">${td && td.balance !== null ? `<b>${md(target)}</b> 残高 <b class="${td.neg ? 'neg-t' : ''}">${td.prov ? '≈' : ''}${yen(td.balance)}</b> ${td.prov ? '<span class="tag prov">仮</span>' : '<span class="tag ok">確定</span>'}${td.debit ? '<br>支出 ' + yenAbs(td.debit) : ''}${td.income ? ' 収入 ' + yenAbs(td.income) : ''}` : 'グラフの日付をタップすると、その日時点の残高を表示します'}</div>`;
-      h += `<div class="grid3"><div><small>月内の支出</small><b>${yenAbs(mDebit)}</b></div><div><small>月内の収入</small><b class="pos-t">${yenAbs(mInc)}</b></div><div><small>月末の残高</small><b class="${lastBal && lastBal.balance < 0 ? 'neg-t' : ''}">${lastBal ? (lastBal.prov ? '≈' : '') + yen(lastBal.balance) : '-'}</b></div></div>`;
+      if (td && td.balance !== null) h += `<div class="readout"><b>${md(target)}</b>　<b class="${td.neg ? 'neg-t' : ''}">${td.prov ? '≈' : ''}${yen(td.balance)}</b> ${td.prov ? '<span class="tag prov">仮</span>' : '<span class="tag ok">確定額</span>'}</div>`;
     }
-    h += `</div>`;
+    h += `</section>`;
 
-    // 内訳リスト
-    h += `<div class="card"><h2>内訳（今日の残高の翌日〜指定日）</h2>
-      <div class="row" style="padding-top:0"><div class="l"><b>今日の残高</b><small>${state.accounts.filter((a) => scope === 'all' || a.id === scope).map((a) => md(a.asOf) + '時点 ' + esc(a.name)).join(' / ')}</small></div><div class="r">${yen(pr.startBalance)}</div></div>`;
-    let shown = false;
-    h += pr.events.length ? pr.events.map((e) => { let d = ''; if (!e.confirmed && !shown) { shown = true; d = '<div class="divider">▼ ここから先は仮の金額を含みます（≈）</div>'; } return d + eventRow(e, { balance: true, multi }); }).join('') : `<div class="empty">この期間に反映される引き落とし・入金はありません</div>`;
-    h += `<div class="row" style="border-top:2px solid var(--ink);margin-top:4px;border-bottom:0"><div class="l"><b>${ymd(target)} 時点の残高見込み</b></div><div class="r ${pr.endBalance < 0 ? 'neg-t' : ''}" style="font-size:20px">${prov ? '≈' : ''}${yen(pr.endBalance)}</div></div></div>
-      <p class="note">※ 各口座の「今日の残高」の日付の翌日から指定日までの予定を反映します。同じ日は支出→収入の順。「仮」は実績が未入力の変動項目で、直近3回の実績平均（実績がなければ初期見込み額）で計算しています。変動項目の行をタップすると実績を入力できます。</p>`;
+    // 4) 内訳：直近5件 + すべて見る
+    const N = 5, evs = pr.events, list = ui.all ? evs : evs.slice(0, N);
+    h += `<section class="sec"><h2>内訳</h2>
+      <div class="hrow base"><div class="m"><b>今日の残高</b></div><div class="a">${yen(pr.startBalance)}</div></div>`;
+    h += evs.length ? list.map(homeRow).join('') : `<div class="empty">この期間に反映される引き落とし・入金はありません</div>`;
+    if (evs.length > N) h += `<button class="more" data-act="toggle-all">${ui.all ? '閉じる' : `すべて見る（残り${evs.length - N}件）`}</button>`;
+    h += `<div class="hrow base end"><div class="m"><b>${md(target)} の見込み</b></div><div class="a ${pr.endBalance < 0 ? 'neg-t' : ''}">${prov ? '≈' : ''}${yen(pr.endBalance)}</div></div></section>`;
     return h;
   }
 
@@ -277,6 +295,8 @@
     let h = `<div class="card"><div class="mnav"><button data-act="snav" data-d="-1">‹</button><b>${ymLabel(mk)}</b><button data-act="snav" data-d="1">›</button>${mk !== L.monthKey(todayStr()) ? '<button class="chip2" data-act="snav" data-d="0">今月へ</button>' : ''}</div>
       <div class="grid3"><div><small>支出合計</small><b>${ap}${yenAbs(out)}</b></div><div><small>収入合計</small><b class="pos-t">${ap}${yenAbs(inc)}</b></div><div><small>差引</small><b class="${inc - out < 0 ? 'neg-t' : ''}">${ap}${yen(inc - out)}</b></div></div>
       ${prov ? '<p class="hint" style="margin:8px 0 0">≈ は仮の金額を含みます（実績未入力の変動項目）。</p>' : ''}</div>`;
+    const dsS = L.dailySeries(state, 'all', mk);
+    if (dsS.hasData) h += `<div class="card"><h2><span>日別の収入・支出</span></h2>${chartSvg(dsS, null, 'bars')}<div class="legend"><span><i class="bx r"></i>支出</span><span><i class="bx g"></i>収入</span><span><i class="bx hatch"></i>斜線=仮</span></div></div>`;
     const bar = (v, mx, cls) => `<div class="bar"><i class="${cls || ''}" style="width:${mx ? Math.max(2, Math.round((v / mx) * 100)) : 0}%"></i></div>`;
     const cardEv = outs.filter((e) => e.kind === 'card');
     h += `<div class="card"><h2><span>カード別（この月に引き落とされる請求）</span></h2>`;
@@ -294,6 +314,9 @@
     h += `<div class="card"><h2><span>支払い別（金額の大きい順）</span></h2>${rows.length ? rows.map((r) => `<div class="srow"><div class="stop"><div class="l"><b>${esc(r.name)}${r.sample ? '<span class="tag sample">サンプル</span>' : ''}</b><small>${esc(r.sub)}${r.reg ? '（登録額）' : ''}</small></div><div class="r">${r.confirmed ? '' : '≈'}${yenAbs(r.amount)}${r.confirmed ? '' : ' <span class="tag prov">仮</span>'}</div></div>${bar(r.amount, mxP, r.sub === '口座から直接' ? 'dir' : '')}</div>`).join('') : '<div class="empty">支払いがありません</div>'}
       <p class="hint" style="margin:6px 0 0">カードの請求額を実績で確定している場合、カード別の合計と、カード内の支払い（登録額）の合計は一致しないことがあります。</p></div>`;
     h += `<div class="card"><h2><span>収入</span></h2>${ins.length ? ins.map((e) => `<div class="row"><div class="l"><b>${esc(e.label)}</b><small>入金 ${md(e.date)}</small></div><div class="r pos-t">+${e.confirmed ? '' : '≈'}${yenAbs(e.amount)} ${badge(e)}</div></div>`).join('') : '<div class="empty">この月の収入はありません</div>'}</div>`;
+    // 口座別（ホームから移動）
+    const tg = getTarget();
+    h += `<div class="card"><h2><span>口座別の残高見込み（${md(tg)}時点）</span></h2>${state.accounts.map((a) => { const r = L.project(state, tg, a.id), pv = r.confirmedThrough !== null && !r.beforeAsOf; return `<div class="row"><div class="l"><b>${esc(a.name)}</b><small>今日の残高 ${yen(a.balance)}（${md(a.asOf)}時点）</small></div><div class="r ${r.endBalance < 0 ? 'neg-t' : ''}">${pv ? '≈' : ''}${yen(r.endBalance)}</div></div>`; }).join('')}</div>`;
     return h;
   }
 
@@ -333,7 +356,7 @@
 
   /* ---------- フォーム ---------- */
   const opt = (v, label, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(label)}</option>`;
-  const field = (id, label, inner, hint) => `<div class="f"><label for="${id}">${label}</label>${inner}${hint ? `<small>${hint}</small>` : ''}</div>`;
+  const field = (id, label, inner, hint) => `<div class="f"><div class="lbl"><label for="${id}">${label}</label>${hint ? '<button type="button" class="q" data-act="hint" aria-label="説明を表示">？</button>' : ''}</div>${inner}${hint ? `<small hidden>${hint}</small>` : ''}</div>`;
   const dayInput = (id, v, req) => `<input id="${id}" name="${id}" type="number" inputmode="numeric" min="1" max="31" step="1" ${req === false ? '' : 'required'} value="${v == null ? '' : esc(v)}">`;
   const DAYHINT = '31日など、その日がない月は月末日として計算します。';
   const acctOptions = (sel) => state.accounts.map((a) => opt(a.id, a.name, a.id === sel)).join('');
@@ -507,7 +530,7 @@
       <div class="f"><label>月（引き落とし${kind === 'inc' ? '（入金）' : ''}日が属する月）</label><input type="month" id="am" value="${defMonth}"></div>
       <div class="f"><label>確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="例：6200"></div>
       <button class="btn" data-act="act-add">この月の実績を保存</button>
-      <h3 style="margin:14px 0 4px;font-size:14px;color:var(--sub)">これまでの実績（新しい順）</h3>
+      <h3 style="margin:16px 0 8px;font-size:16px;color:var(--sub)">これまでの実績（新しい順）</h3>
       ${hist.length ? hist.map((x, i) => `<div class="row"><div class="l"><b>${ymLabel(x.month)}</b>${i < 3 ? '<small>平均の対象（直近3件）</small>' : ''}</div><div class="r">${yenAbs(x.amount)}</div><button class="btn sm danger" data-act="act-del" data-month="${x.month}">削除</button></div>`).join('') : '<div class="empty">まだ実績がありません</div>'}
       <button class="btn sec" data-act="close-dlg" style="margin-top:12px">閉じる</button></div>`;
   }
@@ -591,6 +614,10 @@
         state.settings.targetDate = m < 0 ? todayStr() : L.addMonthsEnd(todayStr(), m);
         state.settings.viewMonth = L.monthKey(state.settings.targetDate); save(); render(); break;
       }
+      case 'toggle-inbox': ui.inbox = !ui.inbox; render(); break;
+      case 'toggle-help': ui.help = !ui.help; render(); break;
+      case 'toggle-all': ui.all = !ui.all; render(); break;
+      case 'hint': { const sm = t.closest('.f').querySelector('small'); if (sm) sm.hidden = !sm.hidden; break; }
       case 'pacc': state.settings.projAccount = id; save(); render(); break;
       case 'pickday': state.settings.targetDate = t.dataset.date; save(); render(); break;
       case 'mnav': { const d = Number(t.dataset.d); state.settings.viewMonth = d === 0 ? L.monthKey(todayStr()) : L.addMonthKey(getViewMonth(), d); save(); render(); break; }
@@ -618,6 +645,7 @@
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.id === 'target') { if (t.value) { state.settings.targetDate = t.value; state.settings.viewMonth = L.monthKey(t.value); save(); render(); } }
+    else if (t.id === 'pacc') { state.settings.projAccount = t.value; save(); render(); }
     else if (t.dataset && t.dataset.act === 'toggle-pay') { const p = byId(state.payments, t.dataset.id); if (p) { p.active = t.checked; save(); render(); } }
     else if (t.id === 'file' && t.files[0]) { importJson(t.files[0]); t.value = ''; }
   });
