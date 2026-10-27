@@ -144,7 +144,9 @@
   const needAcctGuide = () => `<div class="guide"><b>まず口座を登録しましょう。</b><br>口座を登録すると、この画面が使えるようになります。<button class="btn sm" style="margin-top:8px" data-act="add-account">口座を登録する</button> <button class="btn sm sec" data-tab="home" style="margin-top:8px">はじめに戻る</button></div>`;
 
   /* ---------- ホーム ---------- */
-  const ui = { inbox: false, all: false, help: false };   // ホームの開閉状態（保存しない）
+  const PAYHELP_KEY = 'money-app-hint-pay';   // 支払いタブの説明を閉じたか（アプリのデータとは別に保存）
+  const payHelpSeen = () => { try { return localStorage.getItem(PAYHELP_KEY) === '1'; } catch (_) { return false; } };
+  const ui = { inbox: false, all: false, help: false, payHelp: !payHelpSeen() };   // ホームの開閉状態（保存しない）
   function homeRow(e) {
     const p = L.parse(e.date), sign = e.delta < 0 ? '−' : '+';
     const tap = e.variable ? `data-act="enter" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}"` : '';
@@ -237,29 +239,33 @@
     const nx = nextEvents();
     const payRow = (p) => {
       const card = byId(state.cards, p.cardId), acc = byId(state.accounts, p.accountId);
-      let meta;
-      if (p.cardId) meta = card ? `引き落とし日はカード設定に従う（毎月${card.withdrawDay}日）` : '<span class="neg-t">カードが見つかりません</span>';
-      else meta = `口座から直接・引き落とし日 毎月${p.day}日${acc ? '・' + esc(acc.name) : ' <span class="neg-t">口座未設定</span>'}`;
       const e = nx['pay:' + p.id];
+      const dv = p.variable && !p.cardId;     // 口座直接の変動項目
+      // カード払いの行は補足なし（引き落とし日はカードの見出しに1回だけ書く）。口座直接は1行。
+      let meta = '';
+      if (p.cardId) { if (!card) meta = '<span class="neg-t">カードが見つかりません</span>'; }
+      else meta = `引き落とし日 毎月${p.day}日・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`;
       let right = yenAbs(p.amount), sub = '';
-      if (p.variable && !p.cardId) {
-        meta += `・請求額がわかる日${p.fixDay ? p.fixDay + '日' : '＝引き落とし日'}`;
+      if (dv) {
         if (e) { right = (e.confirmed ? '' : '≈') + yenAbs(e.amount); sub = `<small>${badge(e)} ${md(e.date)}分</small>`; }
+        sub += '<small class="var-t">変動</small>';
       }
       return `<div class="row ${p.active === false ? 'off' : ''}">
-        <div class="l tap" data-act="edit-pay" data-id="${p.id}"><b>${esc(p.name)}${p.variable && !p.cardId ? '<span class="tag var">変動</span>' : ''}${sampleTag(p)}</b><small>${meta}</small>${p.memo ? `<small>📝 ${esc(p.memo)}</small>` : ''}</div>
+        <div class="l tap" data-act="edit-pay" data-id="${p.id}"><b>${esc(p.name)}</b>${meta ? `<small>${meta}</small>` : ''}${p.memo ? `<small>📝 ${esc(p.memo)}</small>` : ''}</div>
         <div class="r tap" data-act="edit-pay" data-id="${p.id}">${right}${sub}</div>
-        ${p.variable && !p.cardId ? `<button class="btn sm sec" data-act="actuals" data-kind="pay" data-id="${p.id}">実績</button>` : ''}
+        ${dv ? `<button class="btn sm sec" data-act="actuals" data-kind="pay" data-id="${p.id}">実績</button>` : ''}
         <label class="sw" title="有効/停止"><input type="checkbox" data-act="toggle-pay" data-id="${p.id}" ${p.active !== false ? 'checked' : ''}><i></i></label></div>`;
     };
-    let h = `<div class="info" style="background:#f0fdfa;color:var(--pri-d);border-color:#99f6e4">タップで編集、右のスイッチで有効/停止。「変動」は毎月金額が変わる項目で、「実績」から確定額を記録できます。</div>`;
+    const hasSample = [].concat(state.accounts, state.cards, state.payments, state.incomes).some((x) => x.sample);
+    let h = `<div class="pagebar"><span class="sub">${hasSample ? 'サンプルデータを表示中（【例】がサンプルです）' : ''}</span><button class="q" data-act="toggle-payhelp" aria-label="使い方を表示" aria-expanded="${ui.payHelp}">？</button></div>`;
+    if (ui.payHelp) h += `<div class="info helpcard"><span>タップで編集、右のスイッチで有効/停止。「変動」は毎月金額が変わる項目で、「実績」から確定額を記録できます。</span><button class="x" data-act="close-payhelp" aria-label="閉じる">✕</button></div>`;
     if (!state.payments.length) h += `<div class="card empty">支払いが未登録です。右下の ＋ から追加してください。</div>`;
     for (const c of state.cards) {
       const items = state.payments.filter((p) => p.cardId === c.id);
       if (!items.length) continue;
       const e = nx['card:' + c.id];
       const tot = items.filter((p) => p.active !== false).reduce((s, p) => s + Number(p.amount), 0);
-      h += `<div class="card"><h2><span>${esc(c.name)}</span><span style="color:var(--ink)">登録額 ${yenAbs(tot)}</span></h2><div class="hint" style="margin:-4px 0 8px">請求額がわかる日 毎月${c.fixDay || '-'}日 → 引き落とし日 毎月${c.withdrawDay}日</div>
+      h += `<div class="card"><h2><span>${esc(c.name)}</span><span>登録額 ${yenAbs(tot)}</span></h2><div class="hint" style="margin:-4px 0 8px">引き落とし日 毎月${c.withdrawDay}日（カード設定に従う）</div>
         ${e ? `<div class="cardnext">次回の請求 ${md(e.date)}：${e.confirmed ? '' : '≈'}${yenAbs(e.amount)} ${badge(e)} ${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}</div>` : ''}
         ${items.map(payRow).join('')}</div>`;
     }
@@ -616,6 +622,8 @@
       }
       case 'toggle-inbox': ui.inbox = !ui.inbox; render(); break;
       case 'toggle-help': ui.help = !ui.help; render(); break;
+      case 'toggle-payhelp': ui.payHelp = !ui.payHelp; if (!ui.payHelp) { try { localStorage.setItem(PAYHELP_KEY, '1'); } catch (_) {} } render(); break;
+      case 'close-payhelp': ui.payHelp = false; try { localStorage.setItem(PAYHELP_KEY, '1'); } catch (_) {} render(); break;
       case 'toggle-all': ui.all = !ui.all; render(); break;
       case 'hint': { const sm = t.closest('.f').querySelector('small'); if (sm) sm.hidden = !sm.hidden; break; }
       case 'pacc': state.settings.projAccount = id; save(); render(); break;

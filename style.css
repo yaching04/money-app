@@ -262,3 +262,18 @@ main{padding:16px 16px 24px}
 .tag.sample{margin:0 0 0 8px}
 .tabs button{white-space:nowrap;font-size:12px;letter-spacing:-.02em}
 .readout .tag{margin-left:8px}
+
+/* ===== v4.1 ===== */
+.pagebar{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:32px;margin:0 0 8px}
+.pagebar .q{color:var(--sub);border-color:#94a3b8}
+.helpcard{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;background:#eff6ff;color:var(--ink);border:0;border-radius:var(--r);padding:16px;margin:0 0 16px;font-size:13px}
+.helpcard .x{flex:none;width:32px;height:32px;margin:-8px -8px 0 0;border:0;background:none;color:var(--sub);font-size:16px;font-family:inherit}
+.row .r .var-t{display:block;font-weight:400;color:var(--sub);font-size:13px}
+.card h2>span:last-child:not(:first-child){color:var(--ink)}
+/* ホーム内訳：見出し行と最初の行の間を軽く */
+.sec>h2{margin-bottom:0}
+.hrow.base{min-height:40px;border-bottom:1px solid #f1f5f9;padding:4px 0}
+.hrow.base.end{border-bottom:0}
+.hrow{border-bottom-color:#eef2f6}
+.row .r{display:flex;flex-direction:column;align-items:flex-end}
+.row .r small{white-space:nowrap}
