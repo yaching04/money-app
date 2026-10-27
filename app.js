@@ -244,17 +244,27 @@
       // カード払いの行は補足なし（引き落とし日はカードの見出しに1回だけ書く）。口座直接は1行。
       let meta = '';
       if (p.cardId) { if (!card) meta = '<span class="neg-t">カードが見つかりません</span>'; }
-      else meta = `引き落とし日 毎月${p.day}日・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`;
-      let right = yenAbs(p.amount), sub = '';
+      else if (dv) {
+        // 変動の口座直接: 2行目は1本の補足行（メモは編集シートでのみ表示）
+        const src = e ? (e.source === 'average' ? `直近${e.n}回平均` : e.source === 'actual' ? '実績' : e.source === 'initial' ? '初期見込み' : '') : '';
+        meta = [p.day + '日', acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>', src].filter(Boolean).join('・');
+      } else meta = `引き落とし日 毎月${p.day}日・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`;
+      let right = yenAbs(p.amount);
+      const sw = `<label class="sw" title="有効/停止"><input type="checkbox" data-act="toggle-pay" data-id="${p.id}" ${p.active !== false ? 'checked' : ''}><i></i></label>`;
       if (dv) {
-        if (e) { right = (e.confirmed ? '' : '≈') + yenAbs(e.amount); sub = `<small>${badge(e)} ${md(e.date)}分</small>`; }
-        sub += '<small class="var-t">変動</small>';
+        // 変動の口座直接は2行: 1行目=名前・金額・スイッチ / 2行目=補足・（変動・仮）・実績
+        if (e) right = (e.confirmed ? '' : '≈') + yenAbs(e.amount);
+        const ed = `data-act="edit-pay" data-id="${p.id}"`;
+        return `<div class="row pv ${p.active === false ? 'off' : ''}">
+        <b class="n tap" ${ed}>${esc(p.name)}</b>
+        <div class="a tap" ${ed}>${right}</div>${sw}
+        <small class="s tap" ${ed}>${meta}</small>
+        <small class="bdg tap" ${ed}><span class="var-t">変動</span>${e ? badge(e) : ''}</small>
+        <button class="btn sm sec" data-act="actuals" data-kind="pay" data-id="${p.id}">実績</button></div>`;
       }
       return `<div class="row ${p.active === false ? 'off' : ''}">
-        <div class="l tap" data-act="edit-pay" data-id="${p.id}"><b>${esc(p.name)}</b>${meta ? `<small>${meta}</small>` : ''}${p.memo ? `<small>📝 ${esc(p.memo)}</small>` : ''}</div>
-        <div class="r tap" data-act="edit-pay" data-id="${p.id}">${right}${sub}</div>
-        ${dv ? `<button class="btn sm sec" data-act="actuals" data-kind="pay" data-id="${p.id}">実績</button>` : ''}
-        <label class="sw" title="有効/停止"><input type="checkbox" data-act="toggle-pay" data-id="${p.id}" ${p.active !== false ? 'checked' : ''}><i></i></label></div>`;
+        <div class="l tap" data-act="edit-pay" data-id="${p.id}"><b>${esc(p.name)}</b>${meta ? `<small>${meta}</small>` : ''}</div>
+        <div class="r tap" data-act="edit-pay" data-id="${p.id}">${right}</div>${sw}</div>`;
     };
     const hasSample = [].concat(state.accounts, state.cards, state.payments, state.incomes).some((x) => x.sample);
     let h = `<div class="pagebar"><span class="sub">${hasSample ? 'サンプルデータを表示中（【例】がサンプルです）' : ''}</span><button class="q" data-act="toggle-payhelp" aria-label="使い方を表示" aria-expanded="${ui.payHelp}">？</button></div>`;

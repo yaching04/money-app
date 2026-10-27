@@ -277,3 +277,18 @@ main{padding:16px 16px 24px}
 .hrow{border-bottom-color:#eef2f6}
 .row .r{display:flex;flex-direction:column;align-items:flex-end}
 .row .r small{white-space:nowrap}
+
+/* ===== v4.2 ===== */
+.row .r .bdg{display:flex;align-items:center;gap:4px;line-height:1.3}
+.row .r .bdg .var-t{display:inline;font-size:13px}
+.row .r .bdg .tag{font-size:11px;padding:0 6px;line-height:16px}
+.row .l b,.row .l small{overflow-wrap:anywhere}
+.row.pv{display:grid;grid-template-columns:minmax(0,1fr) auto 48px;grid-template-areas:"n a w" "s b x";column-gap:8px;row-gap:0;align-items:center;padding:8px 0}
+.row.pv .n{grid-area:n;min-width:0;overflow-wrap:anywhere}
+.row.pv .a{grid-area:a;text-align:right;white-space:nowrap;font-weight:700}
+.row.pv .sw{grid-area:w;justify-self:end}
+.row.pv .s{grid-area:s;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--sub);font-size:13px}
+.row.pv .bdg{grid-area:b;justify-self:end;display:flex;align-items:center;gap:4px;color:var(--sub);font-size:13px;line-height:20px}
+.row.pv .bdg .var-t{font-size:13px;color:var(--sub)}
+.row.pv .bdg .tag{font-size:11px;padding:0 6px;line-height:16px;margin:0}
+.row.pv .btn{grid-area:x;justify-self:end;min-height:28px;padding:0 8px;font-size:13px;margin-top:4px}
