@@ -311,3 +311,14 @@ svg.chart .grip text{pointer-events:none}
 .row.ldone{opacity:.55}
 #loanNote{margin:4px 0 8px}
 svg.chart .grip .cs-t{fill:#fff;font-weight:700;font-size:11px}
+
+/* ---- v51: アプリ内の確認ダイアログ ---- */
+dialog.cdlg{margin:auto;width:calc(100% - 40px);max-width:340px;border-radius:18px;max-height:90vh}
+.cfm h2{font-size:18px;margin:0 0 8px}
+.cfm p{margin:0 0 16px;font-size:16px;line-height:1.55;color:var(--ink)}
+.cfm .btns{margin-top:0}
+.cfm .btns .btn{flex:1;min-height:48px}
+.btn.solid-danger{background:var(--red);color:#fff}
+dialog{max-height:92vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+dialog.cdlg{max-height:90vh;max-height:90dvh}
+.sheet>.btn.danger{border:2px solid var(--red);margin-top:14px;min-height:48px}

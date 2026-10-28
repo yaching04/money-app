@@ -419,6 +419,22 @@
   const day = (fd, k) => Math.min(31, Math.max(1, Math.round(num(fd, k))));
   const optDay = (fd, k) => { const v = fd.get(k); return v === '' || v == null ? null : day(fd, k); };
 
+  /* アプリ内の確認ダイアログ（confirm/prompt/alert の代わり。iPhoneのホーム画面アプリでも確実に動く）
+   * 毎回新しい <dialog> を作って最前面に出し、閉じたら取り除く。OK=true / キャンセル・外側タップ=false を返す */
+  function askConfirm(o) {
+    return new Promise((resolve) => {
+      const d = document.createElement('dialog'); d.className = 'cdlg';
+      const danger = o.danger !== false;
+      d.innerHTML = `<div class="sheet cfm" role="alertdialog" aria-labelledby="cfmT"><h2 id="cfmT">${esc(o.title)}</h2><p>${esc(o.message || '').replace(/\n/g, '<br>')}</p>
+        <div class="btns">${o.noCancel ? '' : `<button type="button" class="btn sec" data-c="0">${esc(o.cancelLabel || 'キャンセル')}</button>`}<button type="button" class="btn ${danger ? 'solid-danger' : ''}" data-c="1">${esc(o.okLabel || 'OK')}</button></div></div>`;
+      let done = false;
+      const fin = (v) => { if (done) return; done = true; try { d.close(); } catch (_) {} d.remove(); resolve(v); };
+      d.addEventListener('click', (e) => { const c = e.target.dataset && e.target.dataset.c; if (c === '1') fin(true); else if (c === '0') fin(false); else if (e.target === d && !o.noCancel) fin(false); });
+      d.addEventListener('cancel', (e) => { e.preventDefault(); fin(false); });   // Esc
+      document.body.appendChild(d); d.showModal();
+    });
+  }
+
   function openForm(o) {
     const dlg = $('#dlg');
     dlg.innerHTML = `<form class="sheet" id="f" novalidate><h2>${o.title}</h2>${o.body}
@@ -428,7 +444,13 @@
     f.addEventListener('click', (e) => {
       const x = e.target.dataset && e.target.dataset.x;
       if (x === 'cancel') dlg.close();
-      if (x === 'del' && confirm((o.deleteLabel || '削除') + 'してよろしいですか？')) { o.onDelete(); dlg.close(); cleanActuals(); save(); render(); toast('完了しました'); }
+      if (x === 'del') {
+        const lbl = o.deleteLabel || '削除', msg = typeof o.delMsg === 'function' ? o.delMsg() : o.delMsg;
+        askConfirm({ title: lbl + 'しますか？', message: (msg || '') + (msg ? '\n' : '') + '元に戻せません。', okLabel: lbl + 'する' }).then((ok) => {
+          if (!ok) return;
+          o.onDelete(); dlg.close(); cleanActuals(); save(); render(); toast(lbl === '削除' ? '削除しました' : '完了しました');
+        });
+      }
     });
     f.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -455,11 +477,8 @@
         if (a && v.balance !== a.balance && v.asOf === a.asOf) v.asOf = todayStr();   // 残高だけ直したら、その残高は「今日時点」
         if (a) Object.assign(a, v); else state.accounts.push(Object.assign({ id: uid() }, v));
       },
-      onDelete: a ? () => {
-        const used = state.cards.some((c) => c.accountId === a.id) || state.payments.some((p) => p.accountId === a.id) || state.incomes.some((i) => i.accountId === a.id);
-        if (used && !confirm('この口座に紐づくカード・支払い・収入があります。それでも削除しますか？（紐づけは「口座未設定」になり予測に含まれません）')) return;
-        state.accounts = state.accounts.filter((x) => x.id !== a.id);
-      } : null,
+      delMsg: a ? () => `口座「${a.name}」を削除します。` + (state.cards.some((c) => c.accountId === a.id) || state.payments.some((p) => p.accountId === a.id) || state.incomes.some((i) => i.accountId === a.id) ? '\nこの口座に紐づくカード・支払い・収入は消えませんが「口座未設定」になり、予測に含まれなくなります。' : '') : '',
+      onDelete: a ? () => { state.accounts = state.accounts.filter((x) => x.id !== a.id); } : null,
     });
   }
   /* 残高の変更（電子マネーの利用などで少しずつ変わる残高を、今日の値に直す） */
@@ -498,9 +517,8 @@
         if (!v.name) return 'カード名を入力してください';
         if (c) Object.assign(c, v); else state.cards.push(Object.assign({ id: uid(), createdAt: todayStr() }, v));
       },
+      delMsg: c ? () => { const n = state.payments.filter((p) => p.cardId === c.id).length; return `カード「${c.name}」を削除します。` + (n ? `\nこのカードの支払い${n}件も一緒に削除されます。` : ''); } : '',
       onDelete: c ? () => {
-        const n = state.payments.filter((p) => p.cardId === c.id).length;
-        if (n && !confirm(`このカードの支払い${n}件も一緒に削除されます。よろしいですか？`)) return;
         state.payments = state.payments.filter((p) => p.cardId !== c.id);
         state.cards = state.cards.filter((x) => x.id !== c.id);
       } : null,
@@ -576,6 +594,7 @@
         if (!v.name) return '名前を入力してください';
         if (p) Object.assign(p, v); else state.payments.push(Object.assign({ id: uid(), createdAt: todayStr() }, v));
       },
+      delMsg: p ? `支払い「${p.name}」を削除します。` : '',
       onDelete: p ? () => { state.payments = state.payments.filter((x) => x.id !== p.id); } : null,
     });
   }
@@ -598,6 +617,7 @@
         if (!v.name) return '名前を入力してください';
         if (i) Object.assign(i, v); else state.incomes.push(Object.assign({ id: uid(), createdAt: todayStr() }, v));
       },
+      delMsg: i ? `収入「${i.name}」を削除します。` : '',
       onDelete: i ? () => { state.incomes = state.incomes.filter((x) => x.id !== i.id); } : null,
     });
   }
@@ -619,6 +639,7 @@
       body: `<p class="hint"><b>${esc(label)}</b>${e ? '<br>' + (e.kind === 'income' ? '入金日 ' : '引き落とし日 ') + md(e.date) + '・請求額がわかる日 ' + md(e.fixDate) : ''}<br>現在: ${e ? (e.confirmed ? '' : '仮 ') + yenAbs(e.amount) + '（' + srcText(e) + '）' : '-'}</p>` +
         field('amount', ymLabel(month) + '分の確定金額（円）', `<input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${e && e.confirmed ? e.amount : ''}" placeholder="${cur}" autofocus>`, '入力すると仮の金額が実績に置き換わり、今後の平均（直近3回）にも使われます。'),
       onSubmit(fd) { const v = num(fd, 'amount'); if (!isFinite(v) || v < 0) return '金額を入力してください'; L.setActual(state, kind, id, month, v); },
+      delMsg: '入力した確定額を取り消して、仮の金額に戻します。',
       onDelete: e && e.source === 'actual' ? () => { L.removeActual(state, kind, id, month); } : null,
     });
   }
@@ -671,10 +692,16 @@
     if (nextA && nextA.fixDate <= t) L.setActual(state, 'card', c1.id, nextA.month, 2590);
     save(); render(); toast('サンプルデータを追加しました');
   }
-  function delSample() {
-    if (!confirm('「サンプル」と表示されているデータをすべて削除します。よろしいですか？')) return;
+  async function delSample() {
+    if (!(await askConfirm({ title: 'サンプルデータを削除', message: '「サンプル」と表示されているデータ（口座・カード・支払い・収入）をすべて削除します。\nご自身で入力したデータは残ります。', okLabel: 'サンプルを削除する' }))) return;
     for (const k of ['accounts', 'cards', 'payments', 'incomes']) state[k] = state[k].filter((x) => !x.sample);
     cleanActuals(); save(); render(); toast('サンプルデータを削除しました');
+  }
+  // 全データ削除：2段階の確認（文字入力は使わない＝IME・全角半角の問題がない）
+  async function resetAll() {
+    if (!(await askConfirm({ title: 'すべてのデータを削除', message: '口座・カード・支払い・収入・実績がすべて消えます。\n先に「バックアップを保存」しておくことをおすすめします。', okLabel: '次へ' }))) return;
+    if (!(await askConfirm({ title: '最後の確認', message: '本当にすべて削除しますか？この操作は元に戻せません。', okLabel: 'すべて削除する' }))) return;
+    state = L.migrate(null); save(); render(); toast('すべて削除しました');
   }
   function exportJson() {
     const blob = new Blob([JSON.stringify(Object.assign({ exportedAt: new Date().toISOString(), app: 'money-app' }, state), null, 2)], { type: 'application/json' });
@@ -690,9 +717,8 @@
         const o = JSON.parse(r.result);
         if (!o || typeof o !== 'object' || !['accounts', 'cards', 'payments', 'incomes'].every((k) => Array.isArray(o[k]))) throw new Error('形式が違います');
         const n = L.migrate(o);
-        if (!confirm(`口座${n.accounts.length}・カード${n.cards.length}・支払い${n.payments.length}・収入${n.incomes.length}・実績${Object.keys(n.actuals).length} を読み込み、現在のデータを置き換えます。${(Number(o.version) || 1) < 2 ? '\n（旧形式v1のデータはv2へ自動変換されます）' : ''}\nよろしいですか？`)) return;
-        state = n; save(); render(); toast('復元しました');
-      } catch (e) { alert('読み込めませんでした：' + e.message); }
+        askConfirm({ title: 'バックアップから復元', message: `口座${n.accounts.length}・カード${n.cards.length}・支払い${n.payments.length}・収入${n.incomes.length}・実績${Object.keys(n.actuals).length} を読み込み、現在のデータをすべて置き換えます。${(Number(o.version) || 1) < 2 ? '\n（旧形式v1のデータはv2へ自動変換されます）' : ''}`, okLabel: '置き換える' }).then((ok) => { if (ok) { state = n; save(); render(); toast('復元しました'); } });
+      } catch (e) { askConfirm({ title: '読み込めませんでした', message: e.message, okLabel: 'OK', noCancel: true, danger: false }); }
     };
     r.readAsText(file);
   }
@@ -718,10 +744,7 @@
       case 'export': exportJson(); break;
       case 'import': $('#file').click(); break;
       case 'reset': {
-        const w = prompt('すべてのデータを削除します。元に戻せません（先にバックアップ推奨）。\n続けるには「削除」と入力してください。');
-        if (w === null) break;
-        if (w.trim() !== '削除') { toast('「削除」と入力されなかったため、削除しませんでした'); break; }
-        state = L.migrate(null); save(); render(); toast('すべて削除しました'); break;
+        resetAll(); break;
       }
       case 'quick': {
         const m = Number(t.dataset.m);
@@ -746,7 +769,11 @@
         if ($('#aa').value === '' || !setActual(actCtx.kind, actCtx.id, m, v)) break;
         drawActuals(); toast('実績を保存しました'); break;
       }
-      case 'act-del': L.removeActual(state, actCtx.kind, actCtx.id, t.dataset.month); save(); drawActuals(); break;
+      case 'act-del': {
+        const ctx = actCtx, mo = t.dataset.month;
+        askConfirm({ title: '実績を削除しますか？', message: `${ymLabel(mo)}の実績を削除します。平均の計算からも外れます。\n元に戻せません。`, okLabel: '削除する' }).then((ok) => { if (ok && ctx && actCtx === ctx) { L.removeActual(state, ctx.kind, ctx.id, mo); save(); drawActuals(); toast('削除しました'); } });
+        break;
+      }
       case 'confirm-actual': {
         const row = t.closest('.inb-row'), inp = $('input', row);
         if (inp.value === '') { toast('金額を入力してください'); inp.focus(); break; }
