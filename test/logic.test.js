@@ -304,4 +304,82 @@ t('computePending: 項目の作成日より前の確定日は出さない / 作�
   // 未来の確定日はまだ出ない（リマインダー側で通知）
   assert.deepStrictEqual(L.computePending(s, '2025-01-09').filter((e) => e.refId === 'pn'), []);
 });
+
+/* ---------- v5: ローン / 残高の更新 ---------- */
+const loanState = (loan, cardId) => {
+  const s = base(); s.accounts[0].asOf = '2025-01-01'; s.incomes = [];
+  s.payments = [{ id: 'ln', name: '車ローン', amount: 30000, cardId: cardId || null, accountId: 'a1', day: 25, active: true, variable: false, loan: loan }];
+  return s;
+};
+t('ローン: 開始月〜最終回だけ発生し、その後は自動で止まる（境界）', () => {
+  const s = loanState({ start: '2025-02', count: 3 });
+  const ds = L.genEvents(s, '2025-01-01', '2025-08-31').filter((e) => e.refId === 'ln').map((e) => e.date);
+  assert.deepStrictEqual(ds, ['2025-02-25', '2025-03-25', '2025-04-25']);   // 1月は開始前、5月以降は終了
+});
+t('ローン: 1回払い / 年またぎ / 月末日の丸め', () => {
+  assert.deepStrictEqual(L.genEvents(loanState({ start: '2025-03', count: 1 }), '2025-01-01', '2026-01-01').map((e) => e.date), ['2025-03-25']);
+  assert.deepStrictEqual(L.genEvents(loanState({ start: '2025-11', count: 3 }), '2025-01-01', '2026-06-01').map((e) => e.date), ['2025-11-25', '2025-12-25', '2026-01-25']);
+  const s = loanState({ start: '2025-01', count: 2 }); s.payments[0].day = 31;
+  assert.deepStrictEqual(L.genEvents(s, '2025-01-01', '2025-04-01').map((e) => e.date), ['2025-01-31', '2025-02-28']);
+});
+t('ローン: 予測に含まれ、最終回の後は残高が減らない', () => {
+  const s = loanState({ start: '2025-01', count: 2 });
+  assert.strictEqual(L.project(s, '2025-01-31', 'all').endBalance, 100000 - 30000);
+  assert.strictEqual(L.project(s, '2025-02-28', 'all').endBalance, 100000 - 60000);
+  assert.strictEqual(L.project(s, '2025-06-30', 'all').endBalance, 100000 - 60000);
+});
+t('ローン: 残り回数（今日の分は支払い済みとして数える）', () => {
+  const s = loanState({ start: '2025-01', count: 12 }); const p = s.payments[0];
+  let i = L.loanInfo(s, p, '2025-01-10');
+  assert.deepStrictEqual([i.total, i.paid, i.remaining, i.done, i.next, i.endMonth], [12, 0, 12, false, '2025-01-25', '2025-12']);
+  i = L.loanInfo(s, p, '2025-01-25'); assert.deepStrictEqual([i.paid, i.remaining, i.next], [1, 11, '2025-02-25']);
+  i = L.loanInfo(s, p, '2025-06-30'); assert.deepStrictEqual([i.paid, i.remaining, i.remainingAmount], [6, 6, 180000]);
+  i = L.loanInfo(s, p, '2025-12-25'); assert.deepStrictEqual([i.remaining, i.done, i.next], [0, true, null]);
+  i = L.loanInfo(s, p, '2030-01-01'); assert.strictEqual(i.remaining, 0);
+  i = L.loanInfo(s, p, '2024-06-01'); assert.deepStrictEqual([i.paid, i.remaining], [0, 12]);   // 開始前
+  assert.strictEqual(L.loanInfo(s, { amount: 1 }, '2025-01-01'), null);
+});
+t('ローン: 「すでにN回払い済み」から開始月を逆算すると、残り回数が一致', () => {
+  for (const [today, paid] of [['2025-03-10', 5], ['2025-03-25', 5], ['2025-03-26', 5], ['2025-01-02', 0], ['2025-03-10', 12]]) {
+    const start = L.loanStartForPaid(25, paid, today);
+    const s = loanState({ start, count: 36 });
+    const i = L.loanInfo(s, s.payments[0], today);
+    assert.strictEqual(i.paid, paid, today + ' paid=' + paid + ' start=' + start);
+    assert.strictEqual(i.remaining, 36 - paid);
+  }
+  assert.strictEqual(L.loanStartForPaid(25, 5, '2025-03-10'), '2024-10');   // 次回3/25が6回目 → 1回目は2024-10
+});
+t('ローン: カード払いはカードの請求額に含まれ、期間外の月は含まれない', () => {
+  const s = loanState({ start: '2025-02', count: 2 }, 'c1');          // Aカード(27日)に紐づく
+  s.payments.push({ id: 'x', name: '動画', amount: 1500, cardId: 'c1', day: 5, active: true });
+  const ev = (m) => L.genEvents(s, '2025-01-01', '2025-04-30').find((e) => e.kind === 'card' && e.month === m);
+  assert.strictEqual(ev('2025-01').amount, 1500);
+  assert.strictEqual(ev('2025-02').amount, 31500);
+  assert.strictEqual(ev('2025-03').amount, 31500);
+  assert.strictEqual(ev('2025-04').amount, 1500);                      // 最終回(3月)の後は自動で外れる
+  assert.deepStrictEqual(ev('2025-02').items.map((x) => x.name + ':' + x.amount), ['車ローン:30000', '動画:1500']);
+  assert.strictEqual(L.loanInfo(s, s.payments[0], '2025-02-10').next, '2025-02-27');   // カードの引き落とし日で数える
+  assert.strictEqual(L.monthlySummary(s, '2025-02').cards[0].total, 31500);
+  assert.strictEqual(L.monthlySummary(s, '2025-05').cards[0].total, 1500);
+});
+t('ローン: 停止中は含まれず、ローンのイベントに回数情報がつく', () => {
+  const s = loanState({ start: '2025-01', count: 3 });
+  const e = L.genEvents(s, '2025-01-01', '2025-03-31');
+  assert.deepStrictEqual(e.map((x) => x.loan.index + '/' + x.loan.total), ['1/3', '2/3', '3/3']);
+  assert.ok(e.every((x) => x.confirmed && !x.variable));
+  s.payments[0].active = false;
+  assert.strictEqual(L.genEvents(s, '2025-01-01', '2025-03-31').length, 0);
+});
+t('setBalance: 残高と基準日を今日にして、今日より後の予定から再計算', () => {
+  const s = base();                                   // 基準日 1/15・残高100000
+  const before = L.project(s, '2025-01-31', 'all').endBalance;   // 1/25給与+200000, 1/27カード-2000, 1/31家賃-50000
+  assert.strictEqual(before, 100000 + 200000 - 2000 - 50000);
+  L.setBalance(s, 'a1', 98765, '2025-01-26');         // 1/26に電子マネーなどで残高を直した
+  assert.deepStrictEqual([s.accounts[0].balance, s.accounts[0].asOf], [98765, '2025-01-26']);
+  assert.strictEqual(L.project(s, '2025-01-31', 'all').endBalance, 98765 - 2000 - 50000);   // 1/26以前の予定は二重に反映されない
+  assert.strictEqual(L.project(s, '2025-01-26', 'all').endBalance, 98765);
+  assert.strictEqual(L.setBalance(s, 'nope', 1, '2025-01-26'), null);
+  assert.strictEqual(L.setBalance(s, 'a1', 'abc', '2025-01-26'), null);
+  L.setBalance(s, 'a1', -300.4, '2025-01-27'); assert.strictEqual(s.accounts[0].balance, -300);
+});
 console.log(n + ' tests passed');

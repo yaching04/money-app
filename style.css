@@ -292,3 +292,22 @@ main{padding:16px 16px 24px}
 .row.pv .bdg .var-t{font-size:13px;color:var(--sub)}
 .row.pv .bdg .tag{font-size:11px;padding:0 6px;line-height:16px;margin:0}
 .row.pv .btn{grid-area:x;justify-self:end;min-height:28px;padding:0 8px;font-size:13px;margin-top:4px}
+
+/* ---- v5 ---- */
+.sg{white-space:nowrap}
+.amt-p{color:var(--ink);font-weight:700}                      /* 仮の金額＝黒 */
+.hrow .a .sg,.hrow.prov .a{font-style:normal}
+.hrow.prov .a{font-style:normal}
+.hrow .a{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.hrow .a .tag.prov,.sg .tag.prov{margin:0 4px 0 0;vertical-align:1px}
+.lnk{border:1px solid var(--line);background:#fff;color:var(--pri-d);border-radius:10px;font:inherit;font-size:13px;font-weight:700;padding:4px 10px;min-height:32px;cursor:pointer}
+.hero .big .tag.prov,.big .tag.prov{font-size:14px;vertical-align:middle;margin-right:6px}
+svg.chart{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+svg.chart[data-drag]{cursor:ew-resize}
+svg.chart.dragging{cursor:grabbing}
+svg.chart .grip text{pointer-events:none}
+.tag.loan{background:#ede9fe;color:#6d28d9;border-radius:6px;padding:0 6px;font-size:12px;margin:0 6px 0 0;font-weight:700}
+.row .l b.rem{display:inline;color:var(--pri-d)}
+.row.ldone{opacity:.55}
+#loanNote{margin:4px 0 8px}
+svg.chart .grip .cs-t{fill:#fff;font-weight:700;font-size:11px}
