@@ -222,14 +222,21 @@
 
     let h = heroHtml(target);
 
-    // 2) 入力待ち：細い黄色の帯。タップで開く
+    // 2) 入力待ち：細い帯。タップで開く。引き落とし日を過ぎたもの(overdue)があれば赤系＋上に並ぶ
     if (pending.length) {
-      h += `<section class="band ${ui.inbox ? 'open' : ''}"><button class="band-btn" data-act="toggle-inbox" aria-expanded="${ui.inbox}"><span>📝 入力待ち ${pending.length}件</span><span class="chev">${ui.inbox ? '▲' : '▼'}</span></button>`;
+      const over = pending.filter((e) => e.status === 'overdue').length;
+      h += `<section class="band ${over ? 'over' : ''} ${ui.inbox ? 'open' : ''}"><button class="band-btn" data-act="toggle-inbox" aria-expanded="${ui.inbox}"><span>📝 入力待ち ${pending.length}件${over ? `<small class="band-over">うち${over}件は引き落とし日を過ぎています</small>` : ''}</span><span class="chev">${ui.inbox ? '▲' : '▼'}</span></button>`;
       if (ui.inbox) {
-        h += `<div class="band-body"><p class="sub">請求額がわかる日になりました。金額を入力すると、仮が確定額に置き換わります。</p>`;
-        h += pending.map((e) => `<div class="inb-row" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}">
-          <div class="l"><b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${e.kind === 'income' ? '入金' : '引き落とし'}日 ${md(e.date)}・請求額がわかる日 ${md(e.fixDate)}</small><small>仮 ${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
-          <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div></div>`).join('');
+        h += `<div class="band-body"><p class="sub">${over ? '赤は引き落とし日を過ぎたもの（その日以降の残高が仮のまま）です。先に入力してください。' : '請求額がわかる日になりました。'}金額を入力すると、仮が確定額に置き換わります。</p>`;
+        h += pending.map((e) => {
+          const w = e.kind === 'income' ? '入金' : '引き落とし';
+          const st = e.status === 'overdue'
+            ? `<span class="pst over">${md(e.date)}の${w}日を過ぎています</span>`
+            : `<span class="pst wait">${md(e.date)}の${w}までに入力</span>`;
+          return `<div class="inb-row ${e.status === 'overdue' ? 'over' : 'wait'}" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}">
+          <div class="l">${st}<b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${w}日 ${md(e.date)}・請求額がわかる日 ${md(e.fixDate)}</small><small>仮 ${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
+          <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div></div>`;
+        }).join('');
         h += `</div>`;
       }
       h += `</section>`;

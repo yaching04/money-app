@@ -289,7 +289,12 @@
         const it = (coll[e.refKind] || []).find((x) => x.id === e.refId);
         if (it && it.createdAt && e.fixDate < it.createdAt) return false;
         return true;
-      });
+      })
+      // status: 'overdue'＝引き落とし(入金)日が今日以前＝その日以降の残高が確定しない（優先）
+      //         'awaiting'＝確定日は過ぎたが引き落とし日はまだ先＝その前日までの残高は確定できる
+      .map((e) => Object.assign(e, { status: e.date <= todayStr ? 'overdue' : 'awaiting' }))
+      .sort((a, b) => (a.status === b.status ? 0 : a.status === 'overdue' ? -1 : 1)
+        || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || (a.fixDate < b.fixDate ? -1 : a.fixDate > b.fixDate ? 1 : 0));
   }
 
   /** 今後 days 日以内に確定日が来る項目を日付ごとにまとめ、朝8:00(JST)の通知予定を返す */

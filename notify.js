@@ -54,7 +54,8 @@
     const k = 'pending-' + jstDate();
     if (pending.length && jstHour() >= 8 && !readNotified()[k]) {
       markNotified(k);
-      await show('金額の入力待ちが' + pending.length + '件あります', pending.slice(0, 4).map((e) => e.label).join('、') + (pending.length > 4 ? ' ほか' : '') + '（アプリを開いて実績を入力してください）', k);
+      const over = pending.filter((e) => e.status === 'overdue').length;
+      await show('金額の入力待ちが' + pending.length + '件あります', (over ? '【うち' + over + '件は引き落とし日を過ぎています】' : '') + pending.slice(0, 4).map((e) => e.label).join('、') + (pending.length > 4 ? ' ほか' : '') + '（アプリを開いて実績を入力してください）', k);
       info.shownNow = true;
     }
     return info;

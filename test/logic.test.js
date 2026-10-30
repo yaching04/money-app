@@ -404,4 +404,32 @@ t('今日の残高は確定：基準日=今日なら、仮の予定があって�
   const r2 = L.project(s2, '2025-01-04', 'all');
   assert.ok(r2.events.every((e) => e.confirmed) && r2.confirmedThrough === null);
 });
+t('computePending v5.3: 引き落とし日を過ぎた(overdue)が上、確定日だけ過ぎた(awaiting)が下／残高はoverdueの日の前日まで確定', () => {
+  const s = {
+    accounts: [{ id: 'a1', name: 'メイン', balance: 100000, asOf: '2025-01-05' }],
+    cards: [{ id: 'cA', name: 'Aカード', withdrawDay: 10, fixDay: 1, variable: true, accountId: 'a1' },
+            { id: 'cB', name: 'Bカード', withdrawDay: 27, fixDay: 15, variable: true, accountId: 'a1' }],
+    actuals: {},
+    payments: [{ id: 'x1', name: 'X', amount: 2000, cardId: 'cA', day: 1, active: true },
+               { id: 'x2', name: 'Y', amount: 3000, cardId: 'cB', day: 1, active: true },
+               { id: 'e1', name: '電気', amount: 6000, cardId: null, accountId: 'a1', day: 25, variable: true, fixDay: 18, active: true }],
+    incomes: [],
+  };
+  const today = '2025-01-20';
+  const p = L.computePending(s, today).filter((e) => e.month === '2025-01');
+  assert.deepStrictEqual(p.map((e) => [e.label, e.status]),
+    [['Aカード', 'overdue'], ['電気', 'awaiting'], ['Bカード', 'awaiting']]);   // overdue先頭→awaitingは引落日の近い順
+  // overdue(1/10)が未入力 → 1/9までは確定、1/10以降は仮
+  assert.strictEqual(L.project(s, '2025-01-09', 'all').confirmedThrough, null);
+  assert.strictEqual(L.project(s, '2025-01-10', 'all').confirmedThrough, '2025-01-09');
+  // overdue を入力 → 今日(1/20)〜awaitingの最初の引落日(1/25)の前日まで確定
+  L.setActual(s, 'card', 'cA', '2025-01', 2100);
+  const p2 = L.computePending(s, today).filter((e) => e.month === '2025-01');
+  assert.ok(p2.every((e) => e.status === 'awaiting'));
+  assert.strictEqual(L.project(s, '2025-01-24', 'all').confirmedThrough, null);
+  assert.strictEqual(L.project(s, '2025-01-24', 'all').endBalance, 100000 - 2100);
+  assert.strictEqual(L.project(s, '2025-01-25', 'all').confirmedThrough, '2025-01-24');
+  // 引き落とし日当日も overdue 扱い
+  assert.strictEqual(L.computePending(s, '2025-01-25').find((e) => e.label === '電気' && e.month === '2025-01').status, 'overdue');
+});
 console.log(n + ' tests passed');
