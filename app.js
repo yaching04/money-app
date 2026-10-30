@@ -252,7 +252,7 @@
     // 4) 内訳：直近5件 + すべて見る
     const N = 5, evs = pr.events, list = ui.all ? evs : evs.slice(0, N);
     h += `<section class="sec"><h2>内訳</h2>
-      <div class="hrow base"><div class="m"><b>今日の残高</b></div><div class="a"><span class="${pr.startBalance < 0 ? 'neg-t' : ''}">${yen(pr.startBalance)}</span><button class="lnk" data-act="edit-balance" data-id="${scope === 'all' ? '' : scope}">変更</button></div></div>`;
+      <div class="hrow base"><div class="m"><b>${pr.minAsOf && pr.minAsOf < today ? `登録した残高（${md(pr.minAsOf)}時点）` : '今日の残高'}</b></div><div class="a"><span class="${pr.startBalance < 0 ? 'neg-t' : ''}">${yen(pr.startBalance)}</span><button class="lnk" data-act="edit-balance" data-id="${scope === 'all' ? '' : scope}">変更</button></div></div>`;
     h += evs.length ? list.map(homeRow).join('') : `<div class="empty">この期間に反映される引き落とし・入金はありません</div>`;
     if (evs.length > N) h += `<button class="more" data-act="toggle-all">${ui.all ? '閉じる' : `すべて見る（残り${evs.length - N}件）`}</button>`;
     h += `<div class="hrow base end"><div class="m"><b>${md(target)} の見込み</b></div><div class="a ${pr.endBalance < 0 ? 'neg-t' : ''}">${pvYen(pr.endBalance, prov)}</div></div></section>`;
@@ -670,9 +670,9 @@
   /* ---------- サンプル・バックアップ ---------- */
   function addSample() {
     const t = todayStr(), base = L.monthKey(t);
-    const addD = L.addDays, dom = (d) => L.parse(d).d;   // サンプルは4日前の残高から開始し、直近の「請求額がわかる日」を過ぎた状態にする
-    const a = { id: uid(), name: '【例】メイン口座', balance: 300000, asOf: addD(t, -4), sample: true };
-    const a2 = { id: uid(), name: '【例】サブ口座', balance: 50000, asOf: addD(t, -4), sample: true };
+    const addD = L.addDays, dom = (d) => L.parse(d).d;   // サンプルの残高は「今日」入力したもの（今日は確定）。直近の「請求額がわかる日」を過ぎた入力待ちも見せる
+    const a = { id: uid(), name: '【例】メイン口座', balance: 300000, asOf: t, sample: true };
+    const a2 = { id: uid(), name: '【例】サブ口座', balance: 50000, asOf: t, sample: true };
     const c1 = { id: uid(), name: '【例】Aカード（請求額が変動）', fixDay: 15, withdrawDay: 27, accountId: a.id, variable: true, sample: true };
     const c2 = { id: uid(), name: '【例】Bカード（固定）', fixDay: 31, withdrawDay: 10, accountId: a.id, variable: false, sample: true };
     state.accounts.push(a, a2); state.cards.push(c1, c2);

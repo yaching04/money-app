@@ -288,9 +288,12 @@ t('computePending: 基準日以前の確定日には入力を求めない（新�
   const p = L.computePending(s, today).filter((e) => e.refId === 'pn');
   assert.deepStrictEqual(p.map((e) => e.month), ['2025-01']);
   assert.strictEqual(p[0].fixDate, '2025-01-10');
-  // 基準日をちょうど確定日に合わせると、その日(以前)は出ない
+  // 残高を確定日の後に更新しても、引き落とし(1/25)がまだ先なら入力待ちは残る
   s.accounts[0].asOf = '2025-01-10';
-  assert.strictEqual(L.computePending(s, today).filter((e) => e.refId === 'pn').length, 0);
+  assert.deepStrictEqual(L.computePending(s, today).filter((e) => e.refId === 'pn').map((e) => e.month), ['2025-01']);
+  // 引き落とし日まで残高に反映済み（基準日>=引落日）なら出ない
+  s.accounts[0].asOf = '2025-01-25';
+  assert.strictEqual(L.computePending(s, '2025-01-26').filter((e) => e.refId === 'pn' && e.month === '2025-01').length, 0);
 });
 t('computePending: 項目の作成日より前の確定日は出さない / 作成日当日は出す', () => {
   const s = v2(); s.accounts[0].asOf = '2024-06-01';
@@ -381,5 +384,24 @@ t('setBalance: 残高と基準日を今日にして、今日より後の予定�
   assert.strictEqual(L.setBalance(s, 'nope', 1, '2025-01-26'), null);
   assert.strictEqual(L.setBalance(s, 'a1', 'abc', '2025-01-26'), null);
   L.setBalance(s, 'a1', -300.4, '2025-01-27'); assert.strictEqual(s.accounts[0].balance, -300);
+});
+t('今日の残高は確定：基準日=今日なら、仮の予定があっても今日は確定、仮の引落日以降は仮', () => {
+  const s = v2(); const today = '2025-01-21';
+  s.accounts.forEach((a) => { a.asOf = today; });
+  const r0 = L.project(s, today, 'all');
+  assert.strictEqual(r0.confirmedThrough, null);          // 今日＝入力した残高そのもの → 確定
+  assert.strictEqual(r0.endBalance, r0.startBalance);
+  const ds = L.dailySeries(s, 'all', '2025-01');
+  assert.strictEqual(ds.days.find((d) => d.date === today).prov, false);   // グラフの今日の点も確定
+  const pend = L.computePending(s, today);
+  assert.ok(pend.length > 0);                              // 入力待ちは引き続き表示される
+  const firstProvDate = pend.map((e) => e.date).sort()[0];
+  const r1 = L.project(s, firstProvDate, 'all');
+  assert.notStrictEqual(r1.confirmedThrough, null);       // 仮の引き落とし日以降は仮
+  assert.ok(ds.days.filter((d) => d.date >= firstProvDate && d.date.startsWith('2025-01')).every((d) => d.prov));
+  // 基準日が過去で、基準日〜今日の間に仮の予定がなければ今日は確定
+  const s2 = v2(); s2.accounts.forEach((a) => { a.asOf = '2025-01-02'; });
+  const r2 = L.project(s2, '2025-01-04', 'all');
+  assert.ok(r2.events.every((e) => e.confirmed) && r2.confirmedThrough === null);
 });
 console.log(n + ' tests passed');

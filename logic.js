@@ -277,14 +277,15 @@
   /* ---------- 金額入力待ち(インボックス)と通知 ---------- */
   /** 確定日が今日以前で、まだ実績が入っていない変動項目（支払日が45日以内に過ぎたものも含む） */
   function computePending(state, todayStr) {
-    // 口座の基準日（残高の日付）以前の確定日、および項目の作成日より前の確定日は入力を求めない
+    // 引き落とし(入金)日が口座の基準日（残高の日付）以前＝もう残高に反映済みのものは入力を求めない。
+    // 項目の作成日より前の確定日も求めない。※残高を今日に更新しても、これからの引き落としの入力待ちは消えない
     const asOf = {}; for (const a of state.accounts) asOf[a.id] = a.asOf;
     const coll = { card: state.cards, pay: state.payments, inc: state.incomes };
     return genEvents(state, addDays(todayStr, -45), addDays(todayStr, 62))
       .filter((e) => {
         if (!e.variable || e.confirmed || e.fixDate > todayStr) return false;
         const base = asOf[e.accountId];
-        if (base && e.fixDate <= base) return false;
+        if (base && e.date <= base) return false;
         const it = (coll[e.refKind] || []).find((x) => x.id === e.refId);
         if (it && it.createdAt && e.fixDate < it.createdAt) return false;
         return true;

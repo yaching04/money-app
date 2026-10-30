@@ -1,5 +1,5 @@
 /* Service Worker: 静的ファイルをキャッシュしてオフラインでも開けるようにする + 通知 */
-const CACHE = 'money-app-v51';
+const CACHE = 'money-app-v52';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './logic.js', './notify.js', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/icon.svg'];
 
