@@ -44,6 +44,47 @@
     return out;
   }
 
+  /* ---------- 繰り返し（毎月 / 毎年 / ◯か月ごと / 1回だけ） ----------
+   * item.repeat が無い・type 'monthly' → 毎月（既存データはそのまま毎月）
+   *   { type: 'yearly', month: 1〜12 }              毎年 month 月の day 日
+   *   { type: 'every', n: 2〜12, start: 'YYYY-MM' }  start 月から n か月ごとの day 日（start より前は発生しない）
+   *   { type: 'once', date: 'YYYY-MM-DD' }           その日に1回だけ（カード払いは date の月の請求に1回だけ含める）
+   * カード払いの「月」はカードの引き落とし日が属する月（ローンと同じ数え方）。
+   * 1か月に発生するのは最大1回なので、実績(確定額)は従来どおり「月」単位で記録できる。 */
+  const repType = (it) => { const r = it && it.repeat; return r && ['yearly', 'every', 'once'].includes(r.type) ? r.type : 'monthly'; };
+  const monthDiff = (a, b) => { const [ay, am] = a.split('-').map(Number), [by, bm] = b.split('-').map(Number); return (by - ay) * 12 + (bm - am); };
+  /** 月 month('YYYY-MM') にその項目が発生するか（ローンは別扱い：loanIndex） */
+  function occursIn(it, month) {
+    const r = it && it.repeat, t = repType(it);
+    if (t === 'monthly') return true;
+    if (t === 'yearly') return Number(month.slice(5)) === Number(r.month);
+    if (t === 'every') { const n = Math.max(1, Math.round(Number(r.n) || 1)); if (!/^\d{4}-\d{2}$/.test(r.start || '')) return false; const d = monthDiff(r.start, month); return d >= 0 && d % n === 0; }
+    if (t === 'once') return typeof r.date === 'string' && r.date.slice(0, 7) === month;
+    return true;
+  }
+  /** 口座直接の支払い・収入の発生日（fromEx より後〜toIn 以内）。1回だけは指定日そのもの */
+  function itemDates(it, fromEx, toIn) {
+    const t = repType(it);
+    if (t === 'once') { const d = it.repeat.date; return /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d > fromEx && d <= toIn ? [d] : []; }
+    return monthlyDates(Number(it.day), fromEx, toIn).filter((d) => occursIn(it, monthKey(d)));
+  }
+  /** fromEx より後で最初の発生日（day はカード払いならカードの引き落とし日）。無ければ null */
+  function nextOccurrence(it, day, fromEx) {
+    const t = repType(it);
+    if (t === 'once') { const r = it.repeat; if (!r.date) return null; const p = parse(r.date); const d = it.cardId ? fmt(p.y, p.m, clampDay(p.y, p.m, Number(day))) : r.date; return d > fromEx ? d : null; }
+    const lim = monthLast(addMonthKey(monthKey(fromEx), 13));
+    const ds = monthlyDates(Number(day), fromEx, lim).filter((d) => occursIn(it, monthKey(d)));
+    return ds[0] || null;
+  }
+  /** 繰り返しの表示: 毎月25日 / 毎年4月27日 / 6か月ごと・25日 / 2026/12/10、1回だけ（カード払いの1回だけは 2026/12） */
+  function repeatLabel(it, day) {
+    const t = repType(it), r = it.repeat || {}, dl = dayLabel(day) || '';
+    if (t === 'yearly') return '毎年' + Number(r.month) + '月' + (isEndDay(day) ? '末' : dl);
+    if (t === 'every') return Number(r.n) + 'か月ごと・' + dl;
+    if (t === 'once') { const p = r.date ? parse(r.date) : null; return p ? (it.cardId ? p.y + '/' + p.m : p.y + '/' + p.m + '/' + p.d) + '、1回だけ' : '1回だけ'; }
+    return '毎月' + dl;
+  }
+
   /** 引き落とし(入金)日 W に対する「金額の確定日」: fixDay の日のうち W 以前で最も近い日。
    *  例) 確定日15・引落27 → 同月15日 / 確定日31(月末)・引落10 → 前月末 / fixDay 未設定 → W 当日 */
   function confirmDate(fixDay, W) {
@@ -104,7 +145,7 @@
     return i >= 1 && i <= Number(p.loan.count) ? i : 0;
   }
   /** その月に発生する金額（通常の支払いは常に amount。ローンは範囲外の月は 0） */
-  const payAmountIn = (p, month) => (p.loan ? (loanIndex(p, month) ? Number(p.amount || 0) : 0) : Number(p.amount || 0));
+  const payAmountIn = (p, month) => (p.loan ? (loanIndex(p, month) ? Number(p.amount || 0) : 0) : occursIn(p, month) ? Number(p.amount || 0) : 0);
   /** ローンの状況。支払い済み＝引き落とし日が today 以前の回（今日の分は反映済みとして数える） */
   function loanInfo(state, p, todayStr) {
     if (!p.loan) return null;
@@ -157,7 +198,16 @@
         const month = monthKey(d);
         const mItems = items.filter((p) => payAmountIn(p, month) > 0);
         const sumItems = mItems.reduce((s, p) => s + payAmountIn(p, month), 0);
-        const a = amountFor(state, 'card', c.id, month, sumItems, variable);
+        let a = amountFor(state, 'card', c.id, month, sumItems, variable);
+        // 変動カードの仮の金額: 過去の実績から「毎月ではない支払い（毎年・◯か月ごと・1回だけ）」の登録額を除いた平均＋今月発生するそれらの登録額
+        // （年会費などが入った月の実績で平均がふくらまない／発生する月だけ上乗せされる）
+        if (variable && a.source === 'average') {
+          const irr = items.filter((p) => !p.loan && repType(p) !== 'monthly');
+          const irrIn = (m) => irr.reduce((s, p) => s + payAmountIn(p, m), 0);
+          const h = history(state, 'card', c.id).filter((x) => x.month < month).slice(-3);
+          const avg = Math.round(h.reduce((s, x) => s + Math.max(0, x.amount - irrIn(x.month)), 0) / h.length);
+          a = Object.assign({}, a, { amount: avg + irrIn(month) });
+        }
         if (!a.amount && a.source !== 'actual') continue;
         ev.push({ date: d, kind: 'card', delta: -a.amount, amount: a.amount, accountId: c.accountId, cardId: c.id, label: c.name,
           refKind: 'card', refId: c.id, month, variable, confirmed: a.confirmed, source: a.source, n: a.n,
@@ -167,7 +217,7 @@
     for (const p of act) {
       if (p.cardId || !accIds.has(p.accountId)) continue;
       const variable = p.variable === true;
-      for (const d of monthlyDates(Number(p.day), fromEx, toIn)) {
+      for (const d of (p.loan ? monthlyDates(Number(p.day), fromEx, toIn) : itemDates(p, fromEx, toIn))) {
         const month = monthKey(d);
         if (p.loan && !loanIndex(p, month)) continue;
         const a = amountFor(state, 'pay', p.id, month, p.amount, variable);
@@ -179,7 +229,7 @@
     for (const i of state.incomes) {
       if (i.active === false || !accIds.has(i.accountId)) continue;
       const variable = i.variable === true;
-      for (const d of monthlyDates(Number(i.day), fromEx, toIn)) {
+      for (const d of itemDates(i, fromEx, toIn)) {
         const month = monthKey(d);
         const a = amountFor(state, 'inc', i.id, month, i.amount, variable);
         if (!a.amount && a.source !== 'actual') continue;
@@ -267,15 +317,15 @@
   /** 毎月の合計（登録額ベース。参考用） */
   function monthlySummary(state, month) {
     const mk = month || monthKey(today());
-    const act = activePayments(state).filter((p) => !p.loan || loanIndex(p, mk));
+    const act = activePayments(state).filter((p) => payAmountIn(p, mk) > 0);
     const cards = state.cards.map((c) => {
-      const items = act.filter((p) => p.cardId === c.id && (!p.loan || loanIndex(p, mk)));
+      const items = act.filter((p) => p.cardId === c.id);
       return { card: c, count: items.length, total: items.reduce((s, p) => s + Number(p.amount || 0), 0) };
     });
     const direct = act.filter((p) => !p.cardId);
     const directTotal = direct.reduce((s, p) => s + Number(p.amount || 0), 0);
     const cardTotal = cards.reduce((s, c) => s + c.total, 0);
-    const incomeTotal = state.incomes.filter((i) => i.active !== false).reduce((s, i) => s + Number(i.amount || 0), 0);
+    const incomeTotal = state.incomes.filter((i) => i.active !== false && occursIn(i, mk)).reduce((s, i) => s + Number(i.amount || 0), 0);
     return { cards, direct: { count: direct.length, total: directTotal }, paymentsTotal: cardTotal + directTotal, incomeTotal };
   }
 
@@ -335,7 +385,7 @@
   }
 
   return { SCHEMA_VERSION, END_DAY, isEndDay, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
-    loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
+    repType, occursIn, itemDates, nextOccurrence, repeatLabel, loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
     computePending, computeReminders, migrate };
 });

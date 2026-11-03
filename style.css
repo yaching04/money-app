@@ -334,3 +334,4 @@ dialog.cdlg{max-height:90vh;max-height:90dvh}
 .pst.over{color:var(--red)}
 .pst.wait{color:var(--amb)}
 .band.over .inb-row.wait{border-top-color:#fca5a5}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}

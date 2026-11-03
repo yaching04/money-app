@@ -468,4 +468,93 @@ t('v5.4 月末: 確定日=月末・引落10日 → 前月末が確定日。残�
   const li = L.loanInfo({ cards: [] }, { amount: 1000, day: E, loan: { count: 3, start: '2025-02' } }, '2025-03-15');
   assert.strictEqual(li.paid, 1); assert.strictEqual(li.endDate, '2025-04-30');
 });
+
+/* ---------- v5.5 繰り返し ---------- */
+const acc0 = (asOf) => ({ id: 'a1', name: 'メイン', balance: 1000000, asOf: asOf || '2025-12-31' });
+t('v5.5 毎年: 年をまたいで年1回だけ（2025〜2027）', () => {
+  const p = { id: 'y', name: '自動車税', amount: 39500, accountId: 'a1', day: 31, repeat: { type: 'yearly', month: 5 } };
+  assert.deepStrictEqual(L.itemDates(p, '2025-01-01', '2027-12-31'), ['2025-05-31', '2026-05-31', '2027-05-31']);
+  const s = { accounts: [acc0()], cards: [], payments: [p], incomes: [], actuals: {} };
+  assert.deepStrictEqual(L.genEvents(s, '2025-12-31', '2027-12-31').map((e) => e.date), ['2026-05-31', '2027-05-31']);
+  assert.strictEqual(L.repeatLabel(p, 31), '毎年5月31日');
+});
+t('v5.5 毎年: 月末・うるう年2月に丸め', () => {
+  const p = { day: L.END_DAY, repeat: { type: 'yearly', month: 2 } };
+  assert.deepStrictEqual(L.itemDates(p, '2026-01-01', '2028-12-31'), ['2026-02-28', '2027-02-28', '2028-02-29']);
+  const q = { day: 31, repeat: { type: 'yearly', month: 4 } };
+  assert.deepStrictEqual(L.itemDates(q, '2026-01-01', '2026-12-31'), ['2026-04-30']);
+  assert.strictEqual(L.repeatLabel(p, L.END_DAY), '毎年2月末');
+});
+t('v5.5 ◯か月ごと: 開始月から N か月ごと、開始前は発生しない', () => {
+  const p = { day: 25, repeat: { type: 'every', n: 6, start: '2026-04' } };
+  assert.deepStrictEqual(L.itemDates(p, '2025-01-01', '2027-12-31'), ['2026-04-25', '2026-10-25', '2027-04-25', '2027-10-25']);
+  const w = { day: 31, repeat: { type: 'every', n: 2, start: '2025-11' } };
+  assert.deepStrictEqual(L.itemDates(w, '2025-10-01', '2026-06-30'), ['2025-11-30', '2026-01-31', '2026-03-31', '2026-05-31']);
+  assert.strictEqual(L.nextOccurrence(p, 25, '2026-11-03'), '2027-04-25');
+  assert.strictEqual(L.repeatLabel(p, 25), '6か月ごと・25日');
+  assert.ok(!L.occursIn(p, '2025-10') && L.occursIn(p, '2026-10') && !L.occursIn(p, '2026-11'));
+});
+t('v5.5 1回だけ: 指定日に1回、過ぎたら次回なし', () => {
+  const p = { day: 10, repeat: { type: 'once', date: '2026-12-10' } };
+  assert.deepStrictEqual(L.itemDates(p, '2026-01-01', '2030-12-31'), ['2026-12-10']);
+  assert.deepStrictEqual(L.itemDates(p, '2026-12-10', '2030-12-31'), []);
+  assert.strictEqual(L.nextOccurrence(p, 10, '2026-11-03'), '2026-12-10');
+  assert.strictEqual(L.nextOccurrence(p, 10, '2026-12-10'), null);
+  assert.strictEqual(L.repeatLabel(p, 10), '2026/12/10、1回だけ');
+});
+t('v5.5 毎月(repeat なし・monthly)は従来どおり', () => {
+  assert.strictEqual(L.repType({}), 'monthly'); assert.strictEqual(L.repType({ repeat: { type: 'monthly' } }), 'monthly');
+  assert.deepStrictEqual(L.itemDates({ day: 5 }, '2026-01-01', '2026-03-31'), ['2026-01-05', '2026-02-05', '2026-03-05']);
+  assert.strictEqual(L.repeatLabel({}, 25), '毎月25日');
+});
+t('v5.5 カード: 毎年・1回だけの支払いは発生する月の請求だけに含まれる', () => {
+  const s = { accounts: [acc0()], actuals: {}, incomes: [],
+    cards: [{ id: 'c', name: 'C', withdrawDay: 27, fixDay: 15, variable: false, accountId: 'a1' }],
+    payments: [{ id: 'm', name: '月額', amount: 1000, cardId: 'c', day: 1, active: true },
+      { id: 'y', name: '年会費', amount: 5000, cardId: 'c', day: 1, active: true, repeat: { type: 'yearly', month: 3 } },
+      { id: 'o', name: '家電', amount: 30000, cardId: 'c', day: 1, active: true, repeat: { type: 'once', date: '2026-02-01' } }] };
+  const ev = L.genEvents(s, '2025-12-31', '2026-04-30');
+  assert.deepStrictEqual(ev.map((e) => [e.month, e.amount]), [['2026-01', 1000], ['2026-02', 31000], ['2026-03', 6000], ['2026-04', 1000]]);
+  assert.deepStrictEqual(ev[2].items.map((i) => i.name), ['月額', '年会費']);
+  assert.strictEqual(L.monthlySummary(s, '2026-03').cards[0].total, 6000);
+  assert.strictEqual(L.monthlySummary(s, '2026-04').cards[0].total, 1000);
+  assert.strictEqual(L.repeatLabel(s.payments[2], 27), '2026/2、1回だけ');
+});
+t('v5.5 変動カード: 仮の平均から年1回分を除き、発生月だけ上乗せ', () => {
+  const s = { accounts: [acc0()], incomes: [], actuals: {},
+    cards: [{ id: 'c', name: 'C', withdrawDay: 27, fixDay: 15, variable: true, accountId: 'a1' }],
+    payments: [{ id: 'm', name: '月額', amount: 1000, cardId: 'c', day: 1, active: true },
+      { id: 'y', name: '年会費', amount: 6000, cardId: 'c', day: 1, active: true, repeat: { type: 'yearly', month: 3 } }] };
+  L.setActual(s, 'card', 'c', '2025-11', 2000); L.setActual(s, 'card', 'c', '2025-12', 3000); L.setActual(s, 'card', 'c', '2026-01', 4000);
+  let ev = L.genEvents(s, '2026-01-31', '2026-03-31');
+  assert.deepStrictEqual(ev.map((e) => [e.month, e.amount, e.confirmed]), [['2026-02', 3000, false], ['2026-03', 9000, false]]);
+  // 年会費を含む3月の実績 10000 → 年会費分を除いた 4000 で平均
+  L.setActual(s, 'card', 'c', '2026-02', 3000); L.setActual(s, 'card', 'c', '2026-03', 10000);
+  ev = L.genEvents(s, '2026-03-31', '2026-04-30');
+  assert.strictEqual(ev[0].amount, Math.round((4000 + 3000 + 4000) / 3));
+});
+t('v5.5 入力待ち・通知は発生する月だけ／仮は直近3回平均・なければ登録額', () => {
+  const p = { id: 'w', name: '水道', amount: 5000, accountId: 'a1', day: 20, variable: true, fixDay: 10, active: true, repeat: { type: 'every', n: 2, start: '2026-01' } };
+  const s = { accounts: [acc0('2025-12-31')], cards: [], payments: [p], incomes: [], actuals: {} };
+  let ev = L.genEvents(s, '2025-12-31', '2026-06-30');
+  assert.deepStrictEqual(ev.map((e) => [e.date, e.fixDate, e.amount, e.source]), [['2026-01-20', '2026-01-10', 5000, 'initial'], ['2026-03-20', '2026-03-10', 5000, 'initial'], ['2026-05-20', '2026-05-10', 5000, 'initial']]);
+  assert.deepStrictEqual(L.computePending(s, '2026-02-15').map((e) => e.month), ['2026-01']);   // 2月は発生しないので入力待ちなし
+  assert.deepStrictEqual(L.computePending(s, '2026-03-01').map((e) => e.month), ['2026-01']);   // 3月分は確定日(3/10)前
+  assert.deepStrictEqual(L.computePending(s, '2026-03-12').map((e) => [e.month, e.status]), [['2026-03', 'awaiting']]);
+  assert.deepStrictEqual(L.computeReminders(s, '2026-01-11', 60).map((r) => r.date), ['2026-03-10']);
+  L.setActual(s, 'pay', 'w', '2026-01', 6000); L.setActual(s, 'pay', 'w', '2026-03', 7000);
+  ev = L.genEvents(s, '2026-04-30', '2026-05-31');
+  assert.deepStrictEqual([ev[0].amount, ev[0].source, ev[0].n], [6500, 'average', 2]);
+  const y = { id: 'y', name: '固定資産税', amount: 80000, accountId: 'a1', day: 30, variable: true, fixDay: null, active: true, repeat: { type: 'yearly', month: 4 } };
+  const s2 = { accounts: [acc0('2025-12-31')], cards: [], payments: [y], incomes: [], actuals: {} };
+  assert.strictEqual(L.genEvents(s2, '2025-12-31', '2026-12-31')[0].amount, 80000);   // 実績なし→入力した金額
+  L.setActual(s2, 'pay', 'y', '2025-04', 82000);
+  assert.strictEqual(L.genEvents(s2, '2025-12-31', '2026-12-31')[0].amount, 82000);
+});
+t('v5.5 収入も繰り返し（賞与 6・12月 = 6か月ごと）', () => {
+  const s = { accounts: [acc0()], cards: [], payments: [], actuals: {},
+    incomes: [{ id: 'b', name: '賞与', amount: 400000, day: 10, accountId: 'a1', active: true, repeat: { type: 'every', n: 6, start: '2026-06' } }] };
+  assert.deepStrictEqual(L.genEvents(s, '2025-12-31', '2027-12-31').map((e) => e.date), ['2026-06-10', '2026-12-10', '2027-06-10', '2027-12-10']);
+  assert.strictEqual(L.project(s, '2026-12-31', 'all').endBalance, 1800000);
+});
 console.log(n + ' tests passed');
