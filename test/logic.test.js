@@ -432,4 +432,40 @@ t('computePending v5.3: 引き落とし日を過ぎた(overdue)が上、確定�
   // 引き落とし日当日も overdue 扱い
   assert.strictEqual(L.computePending(s, '2025-01-25').find((e) => e.label === '電気' && e.month === '2025-01').status, 'overdue');
 });
+t('v5.4 月末(END_DAY): 2月・30日の月・31日の月で最終日になる', () => {
+  const E = L.END_DAY;
+  assert.deepStrictEqual(L.monthlyDates(E, '2025-01-01', '2025-05-31'), ['2025-01-31', '2025-02-28', '2025-03-31', '2025-04-30', '2025-05-31']);
+  assert.deepStrictEqual(L.monthlyDates(E, '2024-01-31', '2024-03-01'), ['2024-02-29']);   // うるう年
+  assert.strictEqual(L.clampDay(2025, 2, E), 28);
+  assert.strictEqual(L.clampDay(2025, 6, E), 30);
+  // 既存の数値 29〜31 も月末に丸める（移行不要）
+  assert.deepStrictEqual(L.monthlyDates(31, '2025-01-31', '2025-04-30'), ['2025-02-28', '2025-03-31', '2025-04-30']);
+  assert.deepStrictEqual(L.monthlyDates(29, '2025-01-31', '2025-03-31'), ['2025-02-28', '2025-03-29']);
+  assert.strictEqual(L.dayLabel(E), '月末');
+  assert.strictEqual(L.dayLabel(25), '25日');
+  assert.strictEqual(L.dayLabel(null), '');
+  assert.ok(L.isEndDay(E) && !L.isEndDay(31));
+});
+t('v5.4 月末: 確定日=月末・引落10日 → 前月末が確定日。残高計算にも反映', () => {
+  const E = L.END_DAY;
+  assert.strictEqual(L.confirmDate(E, '2025-03-10'), '2025-02-28');
+  assert.strictEqual(L.confirmDate(E, '2025-05-10'), '2025-04-30');
+  assert.strictEqual(L.confirmDate(E, '2025-03-31'), '2025-03-31');   // 引落も月末なら同日
+  const s = {
+    accounts: [{ id: 'a1', name: 'メイン', balance: 100000, asOf: '2025-02-01' }],
+    cards: [{ id: 'c1', name: 'C', withdrawDay: E, fixDay: 15, variable: false, accountId: 'a1' }],
+    actuals: {},
+    payments: [{ id: 'r', name: '家賃', amount: 50000, cardId: null, accountId: 'a1', day: E, active: true },
+               { id: 'x', name: 'X', amount: 1000, cardId: 'c1', day: 1, active: true }],
+    incomes: [{ id: 'i', name: '給与', amount: 200000, day: E, accountId: 'a1', active: true }],
+  };
+  const ev = L.genEvents(s, '2025-02-01', '2025-04-30');
+  assert.deepStrictEqual([...new Set(ev.map((e) => e.date))], ['2025-02-28', '2025-03-31', '2025-04-30']);
+  assert.strictEqual(L.project(s, '2025-02-27', 'all').endBalance, 100000);
+  assert.strictEqual(L.project(s, '2025-02-28', 'all').endBalance, 100000 - 50000 - 1000 + 200000);
+  assert.strictEqual(L.project(s, '2025-04-30', 'all').endBalance, 100000 + 3 * (200000 - 51000));
+  // ローンの引落日も月末
+  const li = L.loanInfo({ cards: [] }, { amount: 1000, day: E, loan: { count: 3, start: '2025-02' } }, '2025-03-15');
+  assert.strictEqual(li.paid, 1); assert.strictEqual(li.endDate, '2025-04-30');
+});
 console.log(n + ' tests passed');

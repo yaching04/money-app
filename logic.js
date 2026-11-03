@@ -13,6 +13,11 @@
   const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d }; };
   const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate(); // m は 1〜12
   // 31日指定でも30日/28日までの月は月末日に丸める
+  /** 「月末」を表す日の値（数値のまま保存。clampDay で各月の最終日になる。29〜31日も同様に月末に丸める） */
+  const END_DAY = 99;
+  const isEndDay = (d) => Number(d) === END_DAY;
+  /** 日の表示: 25 → '25日' / 月末 → '月末' / 未設定 → '' */
+  const dayLabel = (d) => d == null || d === '' || !(Number(d) >= 1) ? '' : isEndDay(d) ? '月末' : Number(d) + '日';
   const clampDay = (y, m, d) => Math.min(Math.max(1, d), daysInMonth(y, m));
   const dayNum = (s) => { const p = parse(s); return Math.round(Date.UTC(p.y, p.m - 1, p.d) / 864e5); };
   const addDays = (s, n) => { const t = new Date((dayNum(s) + n) * 864e5); return fmt(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); };
@@ -329,7 +334,7 @@
     return s;
   }
 
-  return { SCHEMA_VERSION, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
+  return { SCHEMA_VERSION, END_DAY, isEndDay, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
     loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
     computePending, computeReminders, migrate };

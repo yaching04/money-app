@@ -285,14 +285,14 @@
       else if (dv) {
         // 変動の口座直接: 2行目は1本の補足行（メモは編集シートでのみ表示）
         const src = e ? (e.source === 'average' ? `直近${e.n}回平均` : e.source === 'actual' ? '実績' : e.source === 'initial' ? '初期見込み' : '') : '';
-        meta = [p.day + '日', acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>', src].filter(Boolean).join('・');
-      } else meta = `引き落とし日 毎月${p.day}日・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`;
+        meta = [dl(p.day), acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>', src].filter(Boolean).join('・');
+      } else meta = `引き落とし日 毎月${dl(p.day)}・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`;
       let right = yenAbs(p.amount), nameTag = '';
       if (p.loan) {
         const li = L.loanInfo(state, p, todayStr());
         const st = li.done ? '完了（全' + li.total + '回）' : `<b class="rem">残り${li.remaining}回</b>／全${li.total}回`;
-        meta = '<span class="tag loan">ローン</span>' + st + (p.cardId ? '' : `・毎月${p.day}日・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`);
-        if (!li.done && li.paid === 0 && li.startMonth > L.monthKey(todayStr())) meta = '<span class="tag loan">ローン</span>' + `${Number(li.startMonth.slice(5))}月開始・全${li.total}回` + (p.cardId ? '' : `・毎月${p.day}日`);
+        meta = '<span class="tag loan">ローン</span>' + st + (p.cardId ? '' : `・毎月${dl(p.day)}・${acc ? esc(acc.name) : '<span class="neg-t">口座未設定</span>'}`);
+        if (!li.done && li.paid === 0 && li.startMonth > L.monthKey(todayStr())) meta = '<span class="tag loan">ローン</span>' + `${Number(li.startMonth.slice(5))}月開始・全${li.total}回` + (p.cardId ? '' : `・毎月${dl(p.day)}`);
       }
       const sw = `<label class="sw" title="有効/停止"><input type="checkbox" data-act="toggle-pay" data-id="${p.id}" ${p.active !== false ? 'checked' : ''}><i></i></label>`;
       if (dv) {
@@ -319,7 +319,7 @@
       if (!items.length) continue;
       const e = nx['card:' + c.id];
       const tot = items.filter((p) => p.active !== false).reduce((s, p) => s + L.payAmountIn(p, L.monthKey(todayStr())), 0);
-      h += `<div class="card"><h2><span>${esc(c.name)}</span><span>今月の登録額 ${yenAbs(tot)}</span></h2><div class="hint" style="margin:-4px 0 8px">引き落とし日 毎月${c.withdrawDay}日（カード設定に従う）</div>
+      h += `<div class="card"><h2><span>${esc(c.name)}</span><span>今月の登録額 ${yenAbs(tot)}</span></h2><div class="hint" style="margin:-4px 0 8px">引き落とし日 毎月${dl(c.withdrawDay)}（カード設定に従う）</div>
         ${e ? `<div class="cardnext">次回の請求 ${md(e.date)}：${e.confirmed ? '' : PV + ' '}${yenAbs(e.amount)} ${e.confirmed ? badge(e) : ''} ${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}</div>` : ''}
         ${items.map(payRow).join('')}</div>`;
     }
@@ -336,10 +336,10 @@
     let h = (state.accounts.length ? '' : needAcctGuide()) + `<div class="sec-h"><h3>🏦 口座</h3><button class="btn sm" data-act="add-account">＋ 追加</button></div><div class="card">`;
     h += state.accounts.length ? state.accounts.map((a) => `<div class="row"><div class="l tap" data-act="edit-account" data-id="${a.id}"><b>${esc(a.name)}${sampleTag(a)}</b><small>${md(a.asOf)}時点の残高</small></div><button class="btn sm sec" data-act="edit-balance" data-id="${a.id}">残高変更</button><div class="r ${a.balance < 0 ? 'neg-t' : ''}">${yen(a.balance)}</div></div>`).join('') : '<div class="empty">口座が未登録です</div>';
     h += `</div><div class="sec-h"><h3>💳 カード</h3><button class="btn sm" data-act="add-card">＋ 追加</button></div><div class="card">`;
-    h += state.cards.length ? state.cards.map((c) => { const a = byId(state.accounts, c.accountId); return `<div class="row"><div class="l tap" data-act="edit-card" data-id="${c.id}"><b>${esc(c.name)}${c.variable !== false ? '<span class="tag var">変動</span>' : '<span class="tag">固定</span>'}${sampleTag(c)}</b><small>請求額がわかる日 毎月${c.fixDay || '-'}日 → 引き落とし日 毎月${c.withdrawDay}日</small><small>${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}</small></div>${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}<div class="r tap" data-act="edit-card" data-id="${c.id}">›</div></div>`; }).join('') : '<div class="empty">カードが未登録です</div>';
+    h += state.cards.length ? state.cards.map((c) => { const a = byId(state.accounts, c.accountId); return `<div class="row"><div class="l tap" data-act="edit-card" data-id="${c.id}"><b>${esc(c.name)}${c.variable !== false ? '<span class="tag var">変動</span>' : '<span class="tag">固定</span>'}${sampleTag(c)}</b><small>請求額がわかる日 毎月${dl(c.fixDay)} → 引き落とし日 毎月${dl(c.withdrawDay)}</small><small>${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}</small></div>${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}<div class="r tap" data-act="edit-card" data-id="${c.id}">›</div></div>`; }).join('') : '<div class="empty">カードが未登録です</div>';
     h += `</div><div class="sec-h"><h3>💰 収入（給与など）</h3><button class="btn sm" data-act="add-income">＋ 追加</button></div><div class="card">`;
     h += state.incomes.length ? state.incomes.map((i) => { const a = byId(state.accounts, i.accountId); const e = nx['inc:' + i.id];
-      return `<div class="row ${i.active === false ? 'off' : ''}"><div class="l tap" data-act="edit-income" data-id="${i.id}"><b>${esc(i.name)}${i.variable ? '<span class="tag var">変動</span>' : ''}${sampleTag(i)}</b><small>毎月${i.day}日 → ${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}${i.variable ? '・請求額がわかる日' + (i.fixDay ? i.fixDay + '日' : '＝入金日') : ''}${i.active === false ? '・停止中' : ''}</small></div>${i.variable ? `<button class="btn sm sec" data-act="actuals" data-kind="inc" data-id="${i.id}">実績</button>` : ''}<div class="r tap" data-act="edit-income" data-id="${i.id}">${i.variable && e ? sgn(1, e.amount, e.confirmed) : sgn(1, i.amount, true)}</div></div>`; }).join('') : '<div class="empty">収入が未登録です（登録すると残高予測に反映されます）</div>';
+      return `<div class="row ${i.active === false ? 'off' : ''}"><div class="l tap" data-act="edit-income" data-id="${i.id}"><b>${esc(i.name)}${i.variable ? '<span class="tag var">変動</span>' : ''}${sampleTag(i)}</b><small>毎月${dl(i.day)} → ${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}${i.variable ? '・請求額がわかる日' + (i.fixDay ? dl(i.fixDay) : '＝入金日') : ''}${i.active === false ? '・停止中' : ''}</small></div>${i.variable ? `<button class="btn sm sec" data-act="actuals" data-kind="inc" data-id="${i.id}">実績</button>` : ''}<div class="r tap" data-act="edit-income" data-id="${i.id}">${i.variable && e ? sgn(1, e.amount, e.confirmed) : sgn(1, i.amount, true)}</div></div>`; }).join('') : '<div class="empty">収入が未登録です（登録すると残高予測に反映されます）</div>';
     return h + `</div><p class="note">カードで払うものは「支払い」で登録すると、カードごとに1つの請求額にまとめて引き落とし日に口座から引かれます。カードが「変動」の場合、請求額がわかる日に実績を入力します（それまでは直近3回の平均、実績がなければ登録額の合計で仮計算）。</p>`;
   }
 
@@ -419,11 +419,17 @@
   /* ---------- フォーム ---------- */
   const opt = (v, label, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(label)}</option>`;
   const field = (id, label, inner, hint) => `<div class="f"><div class="lbl"><label for="${id}">${label}</label>${hint ? '<button type="button" class="q" data-act="hint" aria-label="説明を表示">？</button>' : ''}</div>${inner}${hint ? `<small hidden>${hint}</small>` : ''}</div>`;
-  const dayInput = (id, v, req) => `<input id="${id}" name="${id}" type="number" inputmode="numeric" min="1" max="31" step="1" ${req === false ? '' : 'required'} value="${v == null ? '' : esc(v)}">`;
-  const DAYHINT = '31日など、その日がない月は月末日として計算します。';
+  // 日付（毎月◯日）は選択式。iPhone では下からホイールが出る。末尾に「月末」(L.END_DAY)
+  const dayInput = (id, v, req) => { const cur = v == null || v === '' ? '' : Number(v);
+    let o = `<option value="" ${cur === '' ? 'selected' : ''} ${req === false ? '' : 'disabled'}>${req === false ? '指定なし' : '選択してください'}</option>`;
+    for (let d = 1; d <= 31; d++) o += opt(d, d + '日', cur === d);
+    o += opt(L.END_DAY, '月末', cur === L.END_DAY);
+    return `<select id="${id}" name="${id}" class="daysel" ${req === false ? '' : 'required'}>${o}</select>`; };
+  const DAYHINT = '「月末」は毎月の最終日（2月は28日／29日、30日の月は30日）。29〜31日を選んだ場合も、その日がない月は月末日として計算します。';
+  const dl = (d) => L.dayLabel(d) || '-';
   const acctOptions = (sel) => state.accounts.map((a) => opt(a.id, a.name, a.id === sel)).join('');
   const num = (fd, k) => Number(fd.get(k));
-  const day = (fd, k) => Math.min(31, Math.max(1, Math.round(num(fd, k))));
+  const day = (fd, k) => { const n = Math.round(num(fd, k)); return n === L.END_DAY ? L.END_DAY : Math.min(31, Math.max(1, n || 1)); };
   const optDay = (fd, k) => { const v = fd.get(k); return v === '' || v == null ? null : day(fd, k); };
 
   /* アプリ内の確認ダイアログ（confirm/prompt/alert の代わり。iPhoneのホーム画面アプリでも確実に動く）
@@ -571,7 +577,7 @@
         };
         f.loanPaid.addEventListener('input', () => { last = 'paid'; loanSync(); });
         f.loanStart.addEventListener('input', () => { last = 'start'; loanSync(); });
-        [f.loanCount, f.amount, f.day].forEach((el) => el.addEventListener('input', loanSync));
+        [f.loanCount, f.amount, f.day].forEach((el) => { el.addEventListener('input', loanSync); el.addEventListener('change', loanSync); });
         f.ptype.addEventListener('change', () => { sync(); loanSync(); });
         const sync = () => {
           const isCard = sel.value !== '', loan = isLoan();
@@ -580,7 +586,7 @@
           $('#accWrap', f).hidden = isCard; $('#varWrap', f).hidden = isCard || loan;
           $('#dayWrap', f).hidden = isCard; f.day.disabled = isCard; f.day.required = !isCard;
           const cd = byId(state.cards, sel.value); const note = $('#cardDayNote', f);
-          note.hidden = !isCard; if (cd) note.innerHTML = '💳 <b>引き落とし日はカード設定に従います</b>（' + esc(cd.name) + '：毎月' + cd.withdrawDay + '日、' + esc((byId(state.accounts, cd.accountId) || {}).name || '口座未設定') + '）。変更は「カード・口座」タブのカード編集で行います。';
+          note.hidden = !isCard; if (cd) note.innerHTML = '💳 <b>引き落とし日はカード設定に従います</b>（' + esc(cd.name) + '：毎月' + dl(cd.withdrawDay) + '、' + esc((byId(state.accounts, cd.accountId) || {}).name || '口座未設定') + '）。変更は「カード・口座」タブのカード編集で行います。';
           $('#fixWrap', f).hidden = isCard || loan || !varC.checked;
           $('#amtLabel', f).textContent = loan ? '毎月の返済額（円）' : !isCard && varC.checked ? '仮の金額（初回の見込み額・円）' : isCard ? '金額（円／毎月・カードの請求額に含まれます）' : '金額（円／毎月）';
         };
@@ -681,12 +687,12 @@
     const a = { id: uid(), name: '【例】メイン口座', balance: 300000, asOf: t, sample: true };
     const a2 = { id: uid(), name: '【例】サブ口座', balance: 50000, asOf: t, sample: true };
     const c1 = { id: uid(), name: '【例】Aカード（請求額が変動）', fixDay: 15, withdrawDay: 27, accountId: a.id, variable: true, sample: true };
-    const c2 = { id: uid(), name: '【例】Bカード（固定）', fixDay: 31, withdrawDay: 10, accountId: a.id, variable: false, sample: true };
+    const c2 = { id: uid(), name: '【例】Bカード（固定）', fixDay: L.END_DAY, withdrawDay: 10, accountId: a.id, variable: false, sample: true };
     state.accounts.push(a, a2); state.cards.push(c1, c2);
     const P = (name, amount, card, d, extra) => { const p = Object.assign({ id: uid(), name, amount, cardId: card ? card.id : null, accountId: a.id, day: d, memo: '', active: true, variable: false, fixDay: null, sample: true }, extra || {}); state.payments.push(p); return p; };
     P('【例】動画配信サービス', 1490, c1, 5); P('【例】音楽サブスク', 980, c1, 12);
     P('【例】クラウドストレージ', 400, c2, 15); P('【例】通販サイト年会費', 600, c2, 20);
-    P('【例】家賃', 80000, null, 31, { memo: '月末（31日がない月は月末日）' });
+    P('【例】家賃', 80000, null, L.END_DAY, { memo: '毎月月末に引き落とし' });
     P('【例】携帯料金', 7000, null, 20);
     P('【例】自動車ローン', 28000, null, 28, { loan: { start: L.loanStartForPaid(28, 10, t), count: 36 } });
     P('【例】スマホ分割払い', 2500, c1, 5, { loan: { start: L.loanStartForPaid(27, 8, t), count: 24 } });
