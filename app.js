@@ -89,12 +89,18 @@
     const Y = (v) => top + hL - ((v - lo) / (hi - lo)) * hL;
     return { W, padL, padR, top, hL, gap, hB, bot, n, cw, H, X, Y, lo, hi };
   }
+  /** 残高の線の色: 前日より減った=赤 / 増えた=緑 / 変化なし=グレー */
+  const LINE_COL = { down: '#dc2626', up: '#15803d', flat: '#64748b' };
+  function dirCol(a, b) {
+    if (!a || !b || a.balance === null || b.balance === null || b.balance === a.balance) return LINE_COL.flat;
+    return b.balance < a.balance ? LINE_COL.down : LINE_COL.up;
+  }
   /** 指定日のマーカー（縦線・つまみ・点）。ドラッグ中はここだけ差し替える */
   function selMarker(ds, target, G) {
     const i = ds.days.findIndex((d) => d.date === target); if (i < 0) return '';
     const x = G.X(i), c = '#1d4ed8', d = ds.days[i], w = 64, lx = Math.min(G.W - w - 2, Math.max(2, x - w / 2));
     let s = `<line x1="${x}" x2="${x}" y1="${G.top - 4}" y2="${G.top + G.hL}" stroke="${c}" stroke-width="1.5"/>`;
-    if (d.balance !== null) s += `<circle cx="${x}" cy="${G.Y(d.balance)}" r="4.4" fill="#fff" stroke="${d.neg ? '#dc2626' : d.prov ? '#d97706' : '#0f766e'}" stroke-width="2.2"/>`;
+    if (d.balance !== null) s += `<circle cx="${x}" cy="${G.Y(d.balance)}" r="4.4" fill="#fff" stroke="${dirCol(ds.days[i - 1], d)}" stroke-width="2.2"/>`;
     s += `<g class="grip"><rect x="${lx}" y="2" width="${w}" height="18" rx="9" fill="${c}"/><text x="${lx + w / 2}" y="15" text-anchor="middle" class="cs-t" fill="#fff">◀ 指定日 ▶</text></g>`;
     return s;
   }
@@ -102,7 +108,6 @@
     const bars = mode === 'bars';   // 'bars'=日別の収入・支出（集計タブ） / 既定=残高の線（ホーム）
     const G = chartGeo(ds, bars);
     const { W, padL, padR, top, hL, gap, hB, bot, n, cw, H, X, Y, lo, hi } = G;
-    const COL = { ok: '#0f766e', prov: '#d97706', neg: '#dc2626' };
     let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="月の残高推移グラフ${bars ? '' : '（左右にドラッグして日付を変更）'}" ${bars ? '' : 'data-drag="1"'}>
       <defs>
         <pattern id="hatchR" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#fecaca"/><line x1="0" y1="0" x2="0" y2="5" stroke="#dc2626" stroke-width="2"/></pattern>
@@ -116,14 +121,16 @@
     // 今日・指定日
     const mark = (date, color, label, dash) => { const i = ds.days.findIndex((d) => d.date === date); if (i < 0) return ''; return `<line x1="${X(i)}" x2="${X(i)}" y1="${top}" y2="${top + hL + gap + hB}" stroke="${color}" stroke-width="1.5" ${dash ? 'stroke-dasharray="2 3"' : ''}/><text x="${X(i) > W - 28 ? W - 2 : X(i)}" y="${top - 8}" text-anchor="${X(i) > W - 28 ? 'end' : 'middle'}" class="cs-t" fill="${color}">${label}</text>`; };
     s += mark(todayStr(), '#64748b', '今日', true);
-    // 残高の線（区間ごと: マイナス=赤 / 仮=破線 / 確定=実線）
+    // 0円より下（残高マイナス）は薄い赤の背景
+    if (!bars && lo < 0) s += `<rect x="${padL}" y="${Y(0)}" width="${W - padL - padR}" height="${top + hL - Y(0)}" fill="#fef2f2" opacity=".8"/>`;
+    // 残高の線（区間ごと: 減る=赤 / 増える=緑 / 変化なし=グレー。仮=破線・確定=実線）
     for (let i = 1; !bars && i < n; i++) {
       const a = ds.days[i - 1], b = ds.days[i];
       if (a.balance === null || b.balance === null) continue;
-      const neg = a.balance < 0 || b.balance < 0, prov = b.prov;
-      s += `<line x1="${X(i - 1)}" y1="${Y(a.balance)}" x2="${X(i)}" y2="${Y(b.balance)}" stroke="${neg ? COL.neg : prov ? COL.prov : COL.ok}" stroke-width="2.6" stroke-linecap="round" ${prov ? 'stroke-dasharray="5 4"' : ''}/>`;
+      const prov = b.prov, col = dirCol(a, b), w = col === LINE_COL.flat ? 2.2 : 2.8;
+      s += `<line class="seg" data-dir="${col === LINE_COL.down ? 'down' : col === LINE_COL.up ? 'up' : 'flat'}" x1="${X(i - 1)}" y1="${Y(a.balance)}" x2="${X(i)}" y2="${Y(b.balance)}" stroke="${col}" stroke-width="${w}" stroke-linecap="round" ${prov ? 'stroke-dasharray="5 4"' : ''}/>`;
     }
-    if (!bars) ds.days.forEach((d, i) => { if (d.balance === null) return; if (d.events.length || i === 0) s += `<circle cx="${X(i)}" cy="${Y(d.balance)}" r="2.8" fill="#fff" stroke="${d.neg ? COL.neg : d.prov ? COL.prov : COL.ok}" stroke-width="2"/>`; });
+    if (!bars) ds.days.forEach((d, i) => { if (d.balance === null) return; if (d.events.length || i === 0) s += `<circle cx="${X(i)}" cy="${Y(d.balance)}" r="2.8" fill="#fff" stroke="${dirCol(ds.days[i - 1], d)}" stroke-width="2"/>`; });
     // 棒グラフ（収入=上・支出=下。仮の分は斜線）
     if (bars) {
     const base = top + hL + gap + hB / 2;
@@ -251,7 +258,7 @@
       chartCtx = { ds, G: chartGeo(ds, false) };
       h += chartSvg(ds, target);
       if (days[0].balance === null) h += `<div class="chartnote">※ 口座の残高の日付より前は表示されません</div>`;
-      h += `<div class="legend"><span><i class="ln"></i>確定額</span><span><i class="ln dash"></i>仮</span><span><i class="ln red"></i>マイナス</span></div>`;
+      h += `<div class="legend"><span><i class="ln red"></i>減る</span><span><i class="ln grn"></i>増える</span><span><i class="ln dash"></i>破線=仮</span></div>`;
       h += `<div id="readwrap">${readoutHtml(ds, target)}</div>`;
     }
     h += `</section>`;
