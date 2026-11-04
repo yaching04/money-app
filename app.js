@@ -870,7 +870,7 @@
         <h3 class="csv-h">毎月の支払いとして登録</h3>
         ${sugg.length ? sugg.map((s, i) => `<div class="csv-act"><label class="f chk"><input type="checkbox" class="caSug" data-i="${i}" ${s.strong ? 'checked' : ''}> <span><b>${esc(s.name)}</b> ${yenAbs(s.amount)}／毎月</span></label><small>${esc(s.merchant)}・${why(s)}</small></div>`).join('')
           : '<p class="hint">候補はありません（前の月の明細を読み込むと、毎月出てくる支払いを見つけやすくなります）。</p>'}
-        <p class="hint csv-once">同じファイルをもう一度読み込んでも二重になりません <button type="button" class="q" data-act="csv-more" aria-label="詳しく" aria-expanded="false">？</button></p>
+        <p class="hint csv-once">同じファイルは二重に登録されません <button type="button" class="q" data-act="csv-more" aria-label="詳しく" aria-expanded="false">？</button></p>
         <p class="hint csv-more" hidden>明細（${csv.an.rows.length}件）はこのカードの${ymLabel(csv.month)}分として保存します。${sugg.length ? '「毎月の支払い」は支払いタブに「毎月」の支払い（このカード払い）として追加され、名前や金額はあとから編集できます。金額が変動する公共料金も、カードの請求額は確定額で記録されます。' : ''}</p>
         <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="preview">戻る</button><button type="button" class="btn" data-act="csv-apply" id="caApply">登録</button></div>`;
     }

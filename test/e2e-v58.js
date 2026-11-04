@@ -67,7 +67,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
     await p.click('#dlg .caSug[data-i="1"]'); await p.click('#dlg .caSug[data-i="0"]'); await p.click('#caActual'); const d = await b();
     await p.click('#caActual'); await p.click('#dlg .caSug[data-i="0"]');
     return a === '2件を登録' && c === '3件を登録' && d === '明細だけ保存' && (await b()) === '2件を登録'; })());
-  ck('説明は1行・？で開閉', (await txt('#dlg .csv-once')).includes('同じファイルをもう一度読み込んでも二重になりません') && await p.$eval('#dlg .csv-more', (e) => e.hidden) && (await (async () => { await p.click('#dlg [data-act=csv-more]'); return p.$eval('#dlg .csv-more', (e) => !e.hidden); })()));
+  ck('説明は1行・？で開閉', (await txt('#dlg .csv-once')).includes('同じファイルは二重に登録されません') && await p.$eval('#dlg .csv-more', (e) => e.hidden) && (await (async () => { await p.click('#dlg [data-act=csv-more]'); return p.$eval('#dlg .csv-more', (e) => !e.hidden); })()));
   await p.click('#dlg [data-act=csv-more]');
   await shot('2-import-actions');
   await clickIn('#dlg [data-act=csv-apply]');
