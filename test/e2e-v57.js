@@ -54,7 +54,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   ck('マイナスになる見込み（ロジック）', !!fn && fn.balance < 0);
   const wt = await txt('.hero .warnst');
   ck('警告: ⚠・日付・金額・見込み ' + wt, !!wt && wt.includes('⚠') && wt.includes(md(fn.date)) && wt.includes('−¥' + Math.abs(fn.balance).toLocaleString('ja-JP')) && wt.includes('になる見込み'));
-  ck('警告: 1行だけ（次の引き落としと入れ替わる）', (await cnt('.hero .status')) === 1 && (await cnt('.nextst')) === 0);
+  ck('警告: v6.0 枠は2行（1行目=次の引き落とし・2行目=警告）', (await cnt('.hero .status')) === 1 && (await cnt('.hero .status > .nextst:first-child')) === 1 && (await cnt('.hero .status > .warnst:nth-child(2)')) === 1 && (await cnt('.hero .status > *')) === 2);
   ck('警告: 薄い赤の背景', (await p.$eval('.warnst', (e) => getComputedStyle(e).backgroundColor)) === 'rgb(254, 242, 242)');
   ck('警告: 仮を含むなら「仮」', !fn.provisional || wt.includes('仮'));
   await shot('1-home');

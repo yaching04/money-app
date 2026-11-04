@@ -337,20 +337,18 @@ dialog.cdlg{max-height:90vh;max-height:90dvh}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 /* ---------- v5.7 ---------- */
 /* 大きな残高の下の1行（次の引き落とし／マイナス警告） */
-.hero .status{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;width:100%;min-height:48px;margin:8px 0 0;padding:8px 12px;border:0;border-radius:12px;font-family:inherit;font-size:13px;text-align:left;cursor:pointer;line-height:1.4}
-.hero .nextst{background:rgba(255,255,255,.16);color:#fff}
-.hero .nextst .st-k{opacity:.85}
-.hero .nextst .st-n{font-weight:700}
-.hero .nextst{flex-direction:column;align-items:stretch;gap:2px}
-.hero .nextst .st-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hero .nextst .st-a{font-weight:700;white-space:nowrap;font-size:16px}
-.hero .nextst .st-r{font-weight:400;opacity:.9}
-.hero .warnst{background:var(--red-bg);color:var(--red);border:1px solid #fecaca;font-weight:700}
-.hero .warnst b{white-space:nowrap}
-.hero .st-t{flex:1;min-width:0}
-.hero .st-ic{display:inline-block;margin-right:6px}
-.hero .st-c{flex:none;font-size:16px}
+/* v6.0: 枠は最大2行。1行目＝次の引き落とし（常に）、2行目＝マイナス警告（あるときだけ） */
+.hero .status{display:flex;flex-direction:column;width:100%;margin:8px 0 0;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.16);font-size:13px;line-height:1.4}
+.hero .st-line{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;margin:0;padding:8px 8px;border:0;background:none;color:#fff;font-family:inherit;font-size:13px;text-align:left;cursor:pointer;white-space:nowrap;min-width:0}
+.hero .st-line>*{flex:none}
+.hero .nextst .st-k{opacity:.9}
+.hero .nextst .st-n{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.hero .nextst .st-r b{font-weight:700}
+.hero .warnst{background:var(--red-bg);color:var(--red);font-weight:700;white-space:normal}
+.hero .warnst .st-w{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero .st-ic{flex:none}
 .hero .status .tag.prov{vertical-align:1px}
+@media (max-width:359px){.hero .nextst .st-dw{display:none}.hero .st-line{gap:4px}}
 /* ジャンプした内訳の行を少し光らせる */
 .hrow.flash{animation:flash 1.6s ease-out}
 @keyframes flash{0%,40%{background:#ccfbf1}100%{background:transparent}}
@@ -397,3 +395,70 @@ html,body{max-width:100%;overflow-x:hidden;overflow-x:clip}
 #main b,#main small,#main span,#main p,#main h2,#main h3{overflow-wrap:anywhere}
 body.typing .tabs,body.typing .fab{display:none}
 .hero-bar>*{min-width:0}.hero-bar select{flex:1 1 0;text-overflow:ellipsis}
+/* ---------- v6.0 ---------- */
+.card{box-shadow:none}
+.onb h2{color:var(--ink)}
+.onb-lead{margin:0 0 8px;font-size:13px;color:var(--sub)}
+.onb-steps{display:grid;gap:8px;margin:0 0 8px}
+.onb-step{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;text-align:left;cursor:pointer}
+.onb-step .n{flex:none;width:32px;height:32px;border-radius:50%;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--sub)}
+.onb-step .t{flex:1;min-width:0}
+.onb-step .t b{display:block;font-size:16px}
+.onb-step .t small{display:block;font-size:13px;color:var(--sub)}
+.onb-step .c{flex:none;color:var(--sub)}
+.onb-step.now{border-color:var(--pri)}
+.onb-step.now .n{background:var(--pri);border-color:var(--pri);color:#fff}
+.onb-step.done .n{background:#fff;border-color:var(--pri);color:var(--pri);font-weight:700}
+.onb-step.done .t b{color:var(--sub);font-weight:600}
+.hsub{margin:16px 0 0;font-size:13px;color:var(--sub)}
+.hrow .m small.shift{color:var(--sub)}
+.unk{display:flex;align-items:center;gap:8px;margin:8px 0 0;font-size:13px;color:var(--sub);min-height:32px}
+.unk input{width:auto;margin:0}
+.pasthint{display:flex;align-items:stretch;gap:0;margin:8px 0;border:1px solid var(--pri);border-radius:8px;background:#f0fdfa;overflow:hidden}
+.pasthint-b{flex:1;min-width:0;min-height:40px;padding:8px;border:0;background:none;color:var(--pri-d);font-family:inherit;font-size:13px;font-weight:700;text-align:left;cursor:pointer}
+.pasthint-x{flex:none;width:40px;border:0;background:none;color:var(--sub);font-size:16px;cursor:pointer}
+.sec>.pasthint,.card>.pasthint{margin:8px 0}
+.csv-step{display:block;gap:0;margin:0 0 16px;font-size:13px;color:var(--sub)}
+.csv-step span,.csv-step span.on{display:inline;width:auto;height:auto;border:0;border-radius:0;background:none;color:var(--sub);font-weight:400}
+.csv-step b{margin:0;color:var(--ink);font-weight:700}
+.csv-sum{padding:8px 16px;border-radius:8px;text-align:left}
+.csv-sum p{margin:0;font-size:16px;font-weight:600;color:var(--ink)}
+.csv-sum b,.csv-sum p b{display:inline;font-size:16px;font-weight:700;margin:0;line-height:1.5}
+.csv-colst{margin:4px 0 0;font-size:13px;color:var(--sub)}
+.csv-colst.ok{color:var(--pri-d)}
+.csv-colst.ng{color:var(--red);font-weight:700}
+.csv-why{margin:8px 0 0;font-size:13px;color:var(--red);text-align:right}
+.cardnext small.shift{margin-left:4px;font-size:13px;color:var(--sub)}
+
+/* v6.0: 金額は必ず1行（ラベル側を縮める・折り返す） */
+.sg,.amt,.amt-p,.v,.row .r,.srow .r,.hrow .a,.ev .a,.row.pv .a,.hero .big>span:first-child{white-space:nowrap;font-variant-numeric:tabular-nums;word-break:normal;overflow-wrap:normal}
+#main .row>.r,#main .srow .r,#main .hrow>.a,#main .ev>.a,#main .row.pv>.a{flex:none;min-width:max-content}
+.row .l,.srow .l,.hrow .m{min-width:0;overflow:hidden}
+.hero .big{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;word-break:normal}
+.items li{overflow-wrap:anywhere}
+/* 集計：レシート風の縦3行 */
+.rcpt{display:flex;flex-direction:column}
+.rcpt .rr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 0}
+.rcpt .rk{min-width:0;color:var(--sub);font-size:13px}
+.rcpt .v{font-size:16px;font-weight:700;text-align:right;flex:none}
+.rcpt .tot{border-top:1px solid var(--line);margin-top:8px;padding-top:16px}
+.rcpt .tot .rk{color:inherit;font-size:16px;font-weight:700}
+.rcpt .tot .v{font-size:20px;font-weight:800}
+.card h2>span:first-child{min-width:0}
+.card h2 .h2a{flex:none;white-space:nowrap;margin-left:8px}
+.hero .warnst .st-w{flex:0 1 auto}
+.hero .warnst .st-wa{flex:none}
+.hero .warnst .st-wt{flex:0 100 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow:not(.base){display:grid;grid-template-columns:48px minmax(0,1fr) auto;grid-template-areas:"d m a" "d n n";column-gap:16px;row-gap:0;align-items:center}
+.hrow:not(.base)>.d{grid-area:d;align-self:start;padding-top:2px}
+.hrow:not(.base)>.m{grid-area:m;overflow:visible}
+.hrow:not(.base)>.a{grid-area:a}
+.hrow .hneg{grid-area:n;display:block;font-size:13px;min-width:0}
+@media (max-width:359px){.hrow:not(.base){grid-template-areas:"d m m" "d n a";column-gap:8px}.hrow:not(.base)>.a{justify-self:end}}
+.hero .nextst .st-k{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero .nextst .st-n{flex-shrink:100}
+.hero .nextst .st-d,.hero .nextst .st-r{flex:none}
+.card h2{flex-wrap:wrap;row-gap:4px}
+.card h2 .h2a{margin-left:auto}
+@media (max-width:359px){.srow .stop{flex-wrap:wrap}.srow .stop>.l{flex:1 1 100%}.srow .stop>.r{margin-left:auto}}
+.hero .warnst{gap:4px}.hero .warnst .st-ic{margin-right:4px}

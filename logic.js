@@ -78,6 +78,62 @@
     const ds = monthlyDates(Number(day), fromEx, lim).filter((d) => occursIn(it, monthKey(d)));
     return ds[0] || null;
   }
+  /* ---------- 祝日・営業日（土日・祝日・年末年始の引き落とし／入金は翌営業日） ---------- */
+  const dow = (s) => { const p = parse(s); return new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay(); };   // 0=日
+  const nthMonday = (y, m, n) => { const w = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); return 1 + ((8 - w) % 7) + (n - 1) * 7; };
+  const shunbun = (y) => Math.floor(20.8431 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4));
+  const shubun = (y) => Math.floor(23.2488 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4));
+  const holCache = {};
+  /** その年の祝日 { 'YYYY-MM-DD': 名前 }（2000〜2099年・現行の祝日法。振替休日・国民の休日を含む） */
+  function holidays(y) {
+    if (holCache[y]) return holCache[y];
+    const h = {}, add = (m, d, n) => { h[fmt(y, m, d)] = n; };
+    add(1, 1, '元日'); add(1, nthMonday(y, 1, 2), '成人の日'); add(2, 11, '建国記念の日');
+    if (y >= 2020) add(2, 23, '天皇誕生日'); else if (y <= 2018) add(12, 23, '天皇誕生日');
+    add(3, shunbun(y), '春分の日'); add(4, 29, y >= 2007 ? '昭和の日' : 'みどりの日');
+    add(5, 3, '憲法記念日'); if (y >= 2007) add(5, 4, 'みどりの日'); add(5, 5, 'こどもの日');
+    if (y === 2020) add(7, 23, '海の日'); else if (y === 2021) add(7, 22, '海の日'); else if (y >= 2003) add(7, nthMonday(y, 7, 3), '海の日');
+    if (y === 2020) add(8, 10, '山の日'); else if (y === 2021) add(8, 8, '山の日'); else if (y >= 2016) add(8, 11, '山の日');
+    if (y >= 2003) add(9, nthMonday(y, 9, 3), '敬老の日');
+    add(9, shubun(y), '秋分の日');
+    if (y === 2020) add(7, 24, 'スポーツの日'); else if (y === 2021) add(7, 23, 'スポーツの日'); else add(10, nthMonday(y, 10, 2), y >= 2020 ? 'スポーツの日' : '体育の日');
+    add(11, 3, '文化の日'); add(11, 23, '勤労感謝の日');
+    if (y === 2019) { add(5, 1, '天皇の即位の日'); add(10, 22, '即位礼正殿の儀'); }
+    // 国民の休日: 祝日にはさまれた平日
+    for (const d of Object.keys(h)) { const n2 = addDays(d, 2); if (h[n2] && !h[addDays(d, 1)] && dow(addDays(d, 1)) !== 0 && addDays(d, 1).slice(0, 4) === String(y)) h[addDays(d, 1)] = '国民の休日'; }
+    // 振替休日: 日曜の祝日 → その後の最初の祝日でない日
+    for (const d of Object.keys(h).sort()) { if (dow(d) !== 0 || h[d] === '振替休日') continue; let x = addDays(d, 1); while (h[x]) x = addDays(x, 1); if (x.slice(0, 4) === String(y)) h[x] = '振替休日'; }
+    return (holCache[y] = h);
+  }
+  const holidayName = (s) => holidays(parse(s).y)[s] || null;
+  /** 銀行の休業日か。理由 '土曜'|'日曜'|祝日名|'年末年始' / null（営業日） */
+  function nonBusiness(s) {
+    const w = dow(s); if (w === 6) return '土曜'; if (w === 0) return '日曜';
+    const hn = holidayName(s); if (hn) return hn;
+    const md = s.slice(5); if (md === '12-31' || md === '01-02' || md === '01-03') return '年末年始';
+    return null;
+  }
+  /** 翌営業日（営業日ならそのまま） */
+  function nextBusinessDay(s) { let x = s, n = 0; while (nonBusiness(x) && n++ < 20) x = addDays(x, 1); return x; }
+  /** 土日祝ずらしが有効か（設定でオフにできる。既定はオン） */
+  const shiftOn = (state) => !(state && state.settings && state.settings.holidayShift === false);
+  /** 表示用: 「※27日が日曜のため」。ずれていなければ '' */
+  function shiftNote(e) {
+    if (!e || !e.nominal || e.nominal === e.date) return '';
+    const r = nonBusiness(e.nominal), d = Number(e.nominal.slice(8));
+    return '※' + d + '日が' + (r === '土曜' || r === '日曜' ? r : r === '年末年始' ? '年末年始' : '祝日') + 'のため';
+  }
+
+  /** 口座直接の支払い・収入の「前回」＝今日以前で最後の発生（土日祝ずらし後の日付で判定）。{ date, nominal, month } / 無ければ null */
+  function lastOccurrence(state, it, todayStr) {
+    const sh = shiftOn(state); let best = null;
+    for (const d of itemDates(it, addDays(todayStr, -800), addDays(todayStr, 12))) {
+      const x = sh ? nextBusinessDay(d) : d;
+      if (x <= todayStr) best = { date: x, nominal: d, month: monthKey(d) };
+    }
+    return best;
+  }
+
   /** 繰り返しの表示: 毎月25日 / 毎年4月27日 / 6か月ごと・25日 / 2026/12/10、1回だけ（カード払いの1回だけは 2026/12） */
   function repeatLabel(it, day) {
     const t = repType(it), r = it.repeat || {}, dl = dayLabel(day) || '';
@@ -192,11 +248,15 @@
     const ev = [];
     const accIds = new Set(state.accounts.map((a) => a.id));
     const act = activePayments(state);
+    // 予定日（nominal）→ 実際の日（土日祝なら翌営業日）。予定日が範囲の少し前でも、ずれて範囲に入るものは含める
+    const sh = shiftOn(state);
+    const span = (gen) => sh ? gen(addDays(fromEx, -12)).map((d) => [nextBusinessDay(d), d]).filter(([x]) => x > fromEx && x <= toIn) : gen(fromEx).map((d) => [d, d]);
+    const nom = (x, d) => (x !== d ? { nominal: d } : {});
     for (const c of state.cards) {
       if (!accIds.has(c.accountId)) continue;
       const items = act.filter((p) => p.cardId === c.id);
       const variable = isCardVariable(c);
-      for (const d of monthlyDates(Number(c.withdrawDay), fromEx, toIn)) {
+      for (const [x, d] of span((f) => monthlyDates(Number(c.withdrawDay), f, toIn))) {
         const month = monthKey(d);
         const mItems = items.filter((p) => payAmountIn(p, month) > 0);
         const sumItems = mItems.reduce((s, p) => s + payAmountIn(p, month), 0);
@@ -211,7 +271,7 @@
           a = Object.assign({}, a, { amount: avg + irrIn(month) });
         }
         if (!a.amount && a.source !== 'actual') continue;
-        ev.push({ date: d, kind: 'card', delta: -a.amount, amount: a.amount, accountId: c.accountId, cardId: c.id, label: c.name,
+        ev.push({ date: x, ...nom(x, d), kind: 'card', delta: -a.amount, amount: a.amount, accountId: c.accountId, cardId: c.id, label: c.name,
           refKind: 'card', refId: c.id, month, variable, confirmed: a.confirmed, source: a.source, n: a.n,
           fixDate: confirmDate(c.fixDay, d), items: mItems.map((p) => ({ name: p.name, amount: payAmountIn(p, month), loan: p.loan ? loanIndex(p, month) + '/' + p.loan.count : undefined })) });
       }
@@ -219,23 +279,23 @@
     for (const p of act) {
       if (p.cardId || !accIds.has(p.accountId)) continue;
       const variable = p.variable === true;
-      for (const d of (p.loan ? monthlyDates(Number(p.day), fromEx, toIn) : itemDates(p, fromEx, toIn))) {
+      for (const [x, d] of span((f) => (p.loan ? monthlyDates(Number(p.day), f, toIn) : itemDates(p, f, toIn)))) {
         const month = monthKey(d);
         if (p.loan && !loanIndex(p, month)) continue;
         const a = amountFor(state, 'pay', p.id, month, p.amount, variable);
         if (!a.amount && a.source !== 'actual') continue;
-        ev.push({ date: d, kind: 'direct', delta: -a.amount, amount: a.amount, accountId: p.accountId, label: p.name, items: [], loan: p.loan ? { index: loanIndex(p, month), total: Number(p.loan.count) } : null,
+        ev.push({ date: x, ...nom(x, d), kind: 'direct', delta: -a.amount, amount: a.amount, accountId: p.accountId, label: p.name, items: [], loan: p.loan ? { index: loanIndex(p, month), total: Number(p.loan.count) } : null,
           refKind: 'pay', refId: p.id, month, variable, confirmed: a.confirmed, source: a.source, n: a.n, fixDate: confirmDate(p.fixDay, d) });
       }
     }
     for (const i of state.incomes) {
       if (i.active === false || !accIds.has(i.accountId)) continue;
       const variable = i.variable === true;
-      for (const d of itemDates(i, fromEx, toIn)) {
+      for (const [x, d] of span((f) => itemDates(i, f, toIn))) {
         const month = monthKey(d);
         const a = amountFor(state, 'inc', i.id, month, i.amount, variable);
         if (!a.amount && a.source !== 'actual') continue;
-        ev.push({ date: d, kind: 'income', delta: a.amount, amount: a.amount, accountId: i.accountId, label: i.name, items: [],
+        ev.push({ date: x, ...nom(x, d), kind: 'income', delta: a.amount, amount: a.amount, accountId: i.accountId, label: i.name, items: [],
           refKind: 'inc', refId: i.id, month, variable, confirmed: a.confirmed, source: a.source, n: a.n, fixDate: confirmDate(i.fixDay, d) });
       }
     }
@@ -544,7 +604,7 @@
     return s;
   }
 
-  return { SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
+  return { SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, holidays, holidayName, nonBusiness, nextBusinessDay, shiftOn, shiftNote, lastOccurrence, dow, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
     repType, occursIn, itemDates, nextOccurrence, repeatLabel, loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
     computePending, computeReminders, migrate,

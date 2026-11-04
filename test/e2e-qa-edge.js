@@ -47,7 +47,9 @@ const base = (o) => Object.assign({ version: 2, accounts: [A()], cards: [], paym
 
   // 1) 月末の丸め（現状OK）
   await load(base({ payments: [P({ id: 'p31', name: 'D31', amount: 1000, day: 31 })] }));
-  const d31 = (await ev('2026-11-05', '2028-03-31')).filter((e) => e.label === 'D31' || /D31/.test(e.name || e.label)).map((e) => e.date);
+  const d31 = (await ev('2026-11-05', '2028-03-31')).filter((e) => e.label === 'D31' || /D31/.test(e.name || e.label)).map((e) => e.nominal || e.date);
+  // v6.0: 2027/2/28 は日曜なので実際の引き落としは 3/1（月）。丸めは本来の日付（nominal）で確かめる
+  ck('31日払い: 2027/2/28(日) → 3/1 にずれる', (await ev('2027-02-01', '2027-03-05')).some((e) => e.label === 'D31' && e.date === '2027-03-01' && e.nominal === '2027-02-28'));
   ck('31日払い: 11月は11/30', d31.includes('2026-11-30'));
   ck('31日払い: 2027年2月は2/28', d31.includes('2027-02-28'));
   ck('31日払い: 2028年2月（うるう年）は2/29', d31.includes('2028-02-29'));

@@ -1,5 +1,10 @@
 const assert = require('assert');
-const L = require('../logic.js');
+const L0 = require('../logic.js');
+// 既存テストは「土日祝ずらし」なしの日付で書かれているため、settings に指定がなければオフで実行する（ずらしのテストは L0 で別途）
+const L = Object.assign({}, L0);
+for (const f of ['genEvents', 'project', 'dailySeries', 'monthEvents', 'monthlySummary', 'computePending', 'computeReminders', 'firstNegativeWithin', 'nextDebit']) {
+  L[f] = (s, ...a) => { if (s && typeof s === 'object') { if (!s.settings) s.settings = {}; if (!('holidayShift' in s.settings)) s.settings.holidayShift = false; } return L0[f](s, ...a); };
+}
 let n = 0; const t = (name, fn) => { fn(); n++; console.log('ok -', name); };
 
 t('clampDay: 31日指定は短い月で月末に丸める', () => {
@@ -660,5 +665,122 @@ t('backupFileName / backupStatus', () => {
   assert.deepStrictEqual(L.backupStatus(null, '2026-11-04'), { days: null, remind: true });
   assert.deepStrictEqual(L.backupStatus('2026-10-05', '2026-11-04'), { days: 30, remind: false });
   assert.deepStrictEqual(L.backupStatus('2026-10-04T10:00:00', '2026-11-04'), { days: 31, remind: true });
+});
+
+/* ================= v6.0: 祝日・土日祝ずらし ================= */
+const HOL = {
+  2026: ['01-01', '01-12', '02-11', '02-23', '03-20', '04-29', '05-03', '05-04', '05-05', '05-06', '07-20', '08-11', '09-21', '09-22', '09-23', '10-12', '11-03', '11-23'],
+  2027: ['01-01', '01-11', '02-11', '02-23', '03-21', '03-22', '04-29', '05-03', '05-04', '05-05', '07-19', '08-11', '09-20', '09-23', '10-11', '11-03', '11-23'],
+  2028: ['01-01', '01-10', '02-11', '02-23', '03-20', '04-29', '05-03', '05-04', '05-05', '07-17', '08-11', '09-18', '09-22', '10-09', '11-03', '11-23'],
+};
+for (const y of [2026, 2027, 2028]) t('holidays: ' + y + '年の祝日（振替休日・国民の休日を含む）', () => {
+  assert.deepStrictEqual(Object.keys(L0.holidays(y)).sort(), HOL[y].map((d) => y + '-' + d));
+});
+t('holidays: 名前（振替休日・国民の休日・春分/秋分）', () => {
+  assert.strictEqual(L0.holidayName('2026-05-06'), '振替休日');
+  assert.strictEqual(L0.holidayName('2026-09-22'), '国民の休日');
+  assert.strictEqual(L0.holidayName('2027-03-22'), '振替休日');
+  assert.strictEqual(L0.holidayName('2027-03-21'), '春分の日');
+  assert.strictEqual(L0.holidayName('2028-09-22'), '秋分の日');
+  assert.strictEqual(L0.holidayName('2026-11-24'), null);
+});
+t('nonBusiness / nextBusinessDay: 土日・祝日・年末年始', () => {
+  assert.strictEqual(L0.nonBusiness('2026-12-26'), '土曜');
+  assert.strictEqual(L0.nonBusiness('2026-12-27'), '日曜');
+  assert.strictEqual(L0.nonBusiness('2026-12-31'), '年末年始');
+  assert.strictEqual(L0.nonBusiness('2026-01-02'), '年末年始');
+  assert.strictEqual(L0.nonBusiness('2026-11-04'), null);
+  assert.strictEqual(L0.nextBusinessDay('2026-12-27'), '2026-12-28');
+  assert.strictEqual(L0.nextBusinessDay('2026-11-23'), '2026-11-24');
+  assert.strictEqual(L0.nextBusinessDay('2026-12-31'), '2027-01-04');
+  assert.strictEqual(L0.nextBusinessDay('2027-12-31'), '2028-01-04');   // 2028/1/1(土)〜1/3(月)
+  assert.strictEqual(L0.nextBusinessDay('2026-05-02'), '2026-05-07');   // GW
+  assert.strictEqual(L0.nextBusinessDay('2027-03-20'), '2027-03-23');   // 土→春分(日)→振替(月)
+  assert.strictEqual(L0.nextBusinessDay('2026-09-19'), '2026-09-24');   // シルバーウィーク
+  assert.strictEqual(L0.nextBusinessDay('2026-11-24'), '2026-11-24');
+});
+const hs = () => ({
+  accounts: [{ id: 'a1', name: 'メイン', balance: 100000, asOf: '2026-11-04' }],
+  cards: [{ id: 'c1', name: 'Aカード', withdrawDay: 27, fixDay: 15, variable: false, accountId: 'a1' }],
+  actuals: {},
+  payments: [
+    { id: 'p1', name: '動画', amount: 1500, cardId: 'c1', day: 5, active: true },
+    { id: 'p2', name: '家賃', amount: 50000, cardId: null, accountId: 'a1', day: 27, active: true },
+    { id: 'p3', name: 'ローン', amount: 3000, cardId: null, accountId: 'a1', day: 31, active: true, loan: { start: '2026-01', count: 24 } },
+  ],
+  incomes: [{ id: 'i1', name: '給与', amount: 200000, day: 23, accountId: 'a1', active: true }],
+  settings: {},
+});
+t('genEvents: 土日祝の引き落とし・入金・カード・ローンは翌営業日（既定オン）', () => {
+  const ev = L0.genEvents(hs(), '2026-11-04', '2027-01-31');
+  const f = (lab, nom) => ev.find((e) => e.label === lab && (e.nominal || e.date) === nom);
+  assert.strictEqual(f('家賃', '2026-12-27').date, '2026-12-28');
+  assert.strictEqual(f('家賃', '2026-12-27').nominal, '2026-12-27');
+  assert.strictEqual(L0.shiftNote(f('家賃', '2026-12-27')), '※27日が日曜のため');
+  assert.strictEqual(f('給与', '2026-11-23').date, '2026-11-24');
+  assert.strictEqual(L0.shiftNote(f('給与', '2026-11-23')), '※23日が祝日のため');
+  assert.strictEqual(f('Aカード', '2026-12-27').date, '2026-12-28');
+  assert.strictEqual(f('ローン', '2026-12-31').date, '2027-01-04');
+  assert.strictEqual(L0.shiftNote(f('ローン', '2026-12-31')), '※31日が年末年始のため');
+  const wk = f('家賃', '2026-11-27');   // 金曜はそのまま
+  assert.strictEqual(wk.date, '2026-11-27'); assert.strictEqual(wk.nominal, undefined); assert.strictEqual(L0.shiftNote(wk), '');
+  // 月（実績・確定のキー）は予定日の月のまま
+  assert.strictEqual(f('ローン', '2026-12-31').month, '2026-12');
+});
+t('genEvents: 範囲の直前の予定日でも、ずれて範囲に入るものは含む／範囲外へずれるものは含まない', () => {
+  const a = L0.genEvents(hs(), '2026-12-27', '2026-12-31').filter((e) => e.label === '家賃');
+  assert.deepStrictEqual(a.map((e) => e.date), ['2026-12-28']);
+  const b = L0.genEvents(hs(), '2026-12-01', '2026-12-27').filter((e) => e.label === '家賃');
+  assert.deepStrictEqual(b.map((e) => e.date), []);
+});
+t('genEvents: settings.holidayShift=false なら予定日どおり', () => {
+  const s = hs(); s.settings.holidayShift = false;
+  const ev = L0.genEvents(s, '2026-11-04', '2027-01-31');
+  assert.ok(ev.some((e) => e.label === '家賃' && e.date === '2026-12-27'));
+  assert.ok(ev.every((e) => !e.nominal));
+});
+t('project: ずらしで月末の残高見込みが変わる（12/31→1/4）', () => {
+  const on = L0.project(hs(), '2026-12-31', 'all'), s = hs(); s.settings.holidayShift = false;
+  const off = L0.project(s, '2026-12-31', 'all');
+  assert.strictEqual(on.endBalance - off.endBalance, 3000);
+});
+
+/* ================= v6.0: 変動の新規登録（前回の金額＝その月の実績） ================= */
+t('lastOccurrence: 今日以前で最後の発生（ずらし後で判定）', () => {
+  const st = { settings: {} };
+  assert.deepStrictEqual(L0.lastOccurrence(st, { day: 27 }, '2026-11-04'), { date: '2026-10-27', nominal: '2026-10-27', month: '2026-10' });
+  // 11/3(祝) → 11/4 に引き落とし＝今日なので「前回」は11月分
+  assert.deepStrictEqual(L0.lastOccurrence(st, { day: 3 }, '2026-11-04'), { date: '2026-11-04', nominal: '2026-11-03', month: '2026-11' });
+  // ずらしオフなら 11/3
+  assert.strictEqual(L0.lastOccurrence({ settings: { holidayShift: false } }, { day: 3 }, '2026-11-04').date, '2026-11-03');
+  // 毎年・1回だけ（未来）
+  assert.strictEqual(L0.lastOccurrence(st, { day: 10, repeat: { type: 'yearly', month: 4 } }, '2026-11-04').date, '2026-04-10');
+  assert.strictEqual(L0.lastOccurrence(st, { day: 10, repeat: { type: 'once', date: '2026-12-10' } }, '2026-11-04'), null);
+  // 10/31(土) → 11/2(月)
+  assert.deepStrictEqual(L0.lastOccurrence(st, { day: 31 }, '2026-11-04'), { date: '2026-11-02', nominal: '2026-10-31', month: '2026-10' });
+});
+const varNew = (asOf) => ({
+  accounts: [{ id: 'a1', name: 'メイン', balance: 100000, asOf }], cards: [], incomes: [], actuals: {}, settings: {},
+  payments: [{ id: 'e', name: '電気代', amount: 8000, cardId: null, accountId: 'a1', day: 27, variable: true, active: true, createdAt: '2026-11-04' }],
+});
+t('変動の新規登録: 前回(10/27)が残高の日付以前なら二重に引かない', () => {
+  const s = varNew('2026-11-04'); const lo = L0.lastOccurrence(s, s.payments[0], '2026-11-04');
+  L0.setActual(s, 'pay', 'e', lo.month, 8000);
+  const pr = L0.project(s, '2026-11-30', 'all');
+  assert.strictEqual(pr.events.filter((e) => e.label === '電気代').length, 1);   // 11/27 の分だけ
+  assert.strictEqual(pr.events[0].month, '2026-11');
+  assert.strictEqual(pr.endBalance, 92000);
+  // 10月分は入力待ちにもならない（実績あり・残高に反映済み）
+  assert.strictEqual(L0.computePending(s, '2026-11-04').length, 0);
+  // 11月分の仮は前回の実績（平均）
+  assert.strictEqual(pr.events[0].amount, 8000); assert.strictEqual(pr.events[0].confirmed, false);
+});
+t('変動の新規登録: 前回が残高の日付より後なら、その実績で1回だけ引く', () => {
+  const s = varNew('2026-10-20'); const lo = L0.lastOccurrence(s, s.payments[0], '2026-11-04');
+  L0.setActual(s, 'pay', 'e', lo.month, 7000);
+  const pr = L0.project(s, '2026-11-30', 'all');
+  const ev = pr.events.filter((e) => e.label === '電気代');
+  assert.deepStrictEqual(ev.map((e) => [e.date, e.amount, e.confirmed]), [['2026-10-27', 7000, true], ['2026-11-27', 7000, false]]);
+  assert.strictEqual(pr.endBalance, 86000);
 });
 console.log(n + ' tests passed');
