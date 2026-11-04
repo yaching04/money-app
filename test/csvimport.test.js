@@ -187,6 +187,7 @@ t('suggestRecurring: 定額サービスの名前（強い候補だけチェッ�
   const sg = C.suggestRecurring(s, 'c1', '2026-11', rows);
   assert.deepStrictEqual(sg.map((x) => [x.name, x.strong, x.reason]), [['Netflix', true, 'known'], ['電気代', false, 'known']]);
   assert.ok(!sg.some((x) => /スーパー/.test(x.merchant)));   // 返金のある店は出ない
+  assert.deepStrictEqual(sg.map((x) => x.varies), [false, true]);   // 公共料金は金額が変動
 });
 t('suggestRecurring: 前の月にも同じ店・近い金額 → history（強い）', () => {
   const s = { cards: [card], payments: [], imports: {} };

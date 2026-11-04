@@ -288,10 +288,12 @@
     [/水道/, '水道代', false],
     [/NURO|フレツツ|フレッツ|光回線|ビツグロ-ブ|BIGLOBE|SONETNET|SONET|プロバイダ/, 'インターネット', true],
   ];
+  // 毎月ありそうだが金額は変動する（公共料金）
+  const VARIES = new Set(['電気代', 'ガス代', '水道代']);
   /** よくある定額サービスか → { name, strong } / null */
   function knownSub(name) {
     const k = merchantKey(name);
-    for (const [re, label, strong] of KNOWN) if (re.test(k)) return { name: label, strong, key: label };
+    for (const [re, label, strong] of KNOWN) if (re.test(k)) return { name: label, strong, key: label, varies: VARIES.has(label) };
     return null;
   }
   /** 名前がだいたい同じか（どちらかがもう一方を含む・3文字以上、または同じ定額サービス） */
@@ -329,7 +331,7 @@
       if (!hist && !ks) continue;
       if (regs.some((p) => (p.importKey && p.importKey === g.key) || similarName(p.name, g.merchant) || (ks && similarName(p.name, ks.name)))) continue;
       const strong = hist || !!(ks && ks.strong);
-      out.push({ key: g.key, name: ks ? ks.name : g.merchant, merchant: g.merchant, amount, reason: hist && ks ? 'both' : hist ? 'history' : 'known', strong, months });
+      out.push({ key: g.key, name: ks ? ks.name : g.merchant, merchant: g.merchant, amount, reason: hist && ks ? 'both' : hist ? 'history' : 'known', strong, months, varies: !!(ks && ks.varies) });
     }
     return out.sort((a, b) => (b.strong - a.strong) || b.amount - a.amount);
   }

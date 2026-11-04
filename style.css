@@ -386,3 +386,5 @@ dialog.cdlg{max-height:90vh;max-height:90dvh}
 .csv-help{margin:16px 0 8px}
 .csv-help ol{margin:8px 0 0;padding-left:24px;font-size:13px;color:var(--sub)}
 .csv-help li{margin:0 0 8px}
+.tag.sug{margin:0 0 0 6px;background:#f1f5f9;color:#64748b;font-size:12px;font-weight:400}
+.csv-once{display:flex;align-items:center;gap:6px}

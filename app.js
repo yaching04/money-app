@@ -848,12 +848,13 @@
       const months = CI.billMonthOptions(guess, 4, 2); if (!months.includes(csv.month)) months.push(csv.month); months.sort();
       const pm = CI.previewMerge(state, card.id, csv.month, rows), had = CI.importedRows(state, card.id, csv.month).length;
       const MAX = 40;
+      const sgKeys = new Set(CI.suggestRecurring(state, card.id, csv.month, rows).map((s) => s.key));
       h = `<h2>明細の確認</h2>${csvSteps(2)}
         <p class="hint">${esc(card.name)}・${esc(csv.file)}${csv.encoding === 'shift_jis' ? '（Shift_JIS）' : ''}</p>
         <div class="csv-sum"><small>${rows.length}件の合計${refunds.length ? `（返金${refunds.length}件を含む）` : ''}</small><b class="${total > 0 ? 'neg-t' : total < 0 ? 'pos-t' : ''}">${total < 0 ? '+' : total > 0 ? '−' : ''}${yenAbs(total)}</b><small>利用日 ${md(ds[0])} 〜 ${md(ds[ds.length - 1])}</small></div>
         ${field('csvMonth', 'どの月の請求ですか（引き落としの月）', `<select id="csvMonth">${months.map((m) => opt(m, billOpt(card, m) + (m === guess ? '・推定' : ''), m === csv.month)).join('')}</select>`, 'カードの「請求額がわかる日」「引き落とし日」と、明細の最後の利用日から推定しています。違うときは変更してください。')}
         ${had ? `<p class="hint">この月は前にも読み込んでいます（${had}件）。同じ明細は二重に数えません：合わせて ${pm.count}件・${yenAbs(pm.total)}</p>` : ''}
-        <div class="csv-rows">${rows.slice(0, MAX).map((r) => `<div class="row"><div class="l"><b>${esc(r.merchant)}</b><small>${md(r.date)}</small></div><div class="r">${csvAmt(r.amount)}</div></div>`).join('')}${rows.length > MAX ? `<p class="hint">ほか${rows.length - MAX}件</p>` : ''}</div>
+        <div class="csv-rows">${rows.slice(0, MAX).map((r) => `<div class="row"><div class="l"><b>${esc(r.merchant)}${sgKeys.has(CI.merchantKey(r.merchant)) ? '<span class="tag sug">毎月？</span>' : ''}</b><small>${md(r.date)}</small></div><div class="r">${csvAmt(r.amount)}</div></div>`).join('')}${rows.length > MAX ? `<p class="hint">ほか${rows.length - MAX}件</p>` : ''}</div>
         <button type="button" class="lnk" data-act="csv-map">列の割り当てを変更</button>
         <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="card">戻る</button><button type="button" class="btn" data-act="csv-next">次へ</button></div>`;
     } else if (csv.step === 'actions') {
@@ -861,18 +862,25 @@
       const cur = state.actuals[L.actualKey('card', card.id, csv.month)];
       const sugg = csv.sugg = CI.suggestRecurring(state, card.id, csv.month, csv.an.rows);
       const cmp = cmpInner('card', card.id, csv.month, pm.total);
-      const why = { history: '前の月にも同じくらいの金額', known: '定額サービスの名前に一致', both: '前の月にも同じくらいの金額・定額サービス' };
+      const why = (s) => s.varies ? (s.reason === 'known' ? '毎月ありそうな支払い（金額は変動）' : '前の月にも出ている・毎月ありそうな支払い（金額は変動）') : { history: '前の月にも同じくらいの金額', known: '定額サービスの名前に一致', both: '前の月にも同じくらいの金額・定額サービス' }[s.reason];
       h = `<h2>登録する内容</h2>${csvSteps(3)}
         <div class="csv-act"><label class="f chk"><input type="checkbox" id="caActual" ${pm.total >= 0 ? 'checked' : 'disabled'}> <span>合計 <b>${yenAbs(pm.total)}</b> を <b>${ymLabel(csv.month)}</b> の確定額にする</span></label>
           <small>${esc(card.name)}の請求額として記録します（「実績」に手で入力するのと同じ）。${cur ? `今の確定額 ${yenAbs(cur.amount)} を置き換えます。` : ''}${pm.total < 0 ? '合計がマイナスのため確定額にできません。' : ''}</small>
           ${cmp ? `<p class="cmp">${cmp}</p>` : ''}</div>
         <h3 class="csv-h">毎月の支払いとして登録</h3>
-        ${sugg.length ? sugg.map((s, i) => `<div class="csv-act"><label class="f chk"><input type="checkbox" class="caSug" data-i="${i}" ${s.strong ? 'checked' : ''}> <span><b>${esc(s.name)}</b> ${yenAbs(s.amount)}／毎月</span></label><small>${esc(s.merchant)}・${why[s.reason]}</small></div>`).join('') + '<p class="hint">登録すると、支払いタブに「毎月」の支払い（このカード払い）として追加されます。名前や金額はあとから編集できます。</p>'
+        ${sugg.length ? sugg.map((s, i) => `<div class="csv-act"><label class="f chk"><input type="checkbox" class="caSug" data-i="${i}" ${s.strong ? 'checked' : ''}> <span><b>${esc(s.name)}</b> ${yenAbs(s.amount)}／毎月</span></label><small>${esc(s.merchant)}・${why(s)}</small></div>`).join('')
           : '<p class="hint">候補はありません（前の月の明細を読み込むと、毎月出てくる支払いを見つけやすくなります）。</p>'}
-        <p class="hint">明細（${csv.an.rows.length}件）はこのカードの${ymLabel(csv.month)}分として保存します。同じファイルをもう一度読み込んでも二重にはなりません。</p>
-        <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="preview">戻る</button><button type="button" class="btn" data-act="csv-apply">読み込む</button></div>`;
+        <p class="hint csv-once">同じファイルをもう一度読み込んでも二重になりません <button type="button" class="q" data-act="csv-more" aria-label="詳しく" aria-expanded="false">？</button></p>
+        <p class="hint csv-more" hidden>明細（${csv.an.rows.length}件）はこのカードの${ymLabel(csv.month)}分として保存します。${sugg.length ? '「毎月の支払い」は支払いタブに「毎月」の支払い（このカード払い）として追加され、名前や金額はあとから編集できます。金額が変動する公共料金も、カードの請求額は確定額で記録されます。' : ''}</p>
+        <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="preview">戻る</button><button type="button" class="btn" data-act="csv-apply" id="caApply">登録</button></div>`;
     }
     dlg.innerHTML = `<div class="sheet csv">${h}</div>`;
+    const ap = $('#caApply', dlg);
+    if (ap) {
+      const upd = () => { const a = $('#caActual', dlg), n = (a && a.checked ? 1 : 0) + dlg.querySelectorAll('.caSug:checked').length; ap.textContent = n ? n + '件を登録' : '明細だけ保存'; };
+      dlg.querySelectorAll('#caActual, .caSug').forEach((x) => x.addEventListener('change', upd)); upd();
+      const mb = $('[data-act=csv-more]', dlg); mb.addEventListener('click', (ev) => { ev.stopPropagation(); const m = $('.csv-more', dlg); m.hidden = !m.hidden; mb.setAttribute('aria-expanded', String(!m.hidden)); });
+    }
     const cs = $('#csvCard', dlg); if (cs) cs.addEventListener('change', () => { csv.cardId = cs.value; });
     const ms = $('#csvMonth', dlg); if (ms) ms.addEventListener('change', () => { csv.month = ms.value; drawCsv(); });
     ['mDate', 'mMer', 'mAmt'].forEach((k) => { const s = $('#' + k, dlg); if (s) s.addEventListener('change', () => { const mp = csv.an.map; mp[{ mDate: 'date', mMer: 'merchant', mAmt: 'amount' }[k]] = Number(s.value); mp.alt = -1; drawCsv(); }); });

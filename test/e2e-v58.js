@@ -16,7 +16,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   const URL = 'http://127.0.0.1:8765/index.html';
   const go = () => p.goto(URL, { waitUntil: 'networkidle0' });
   const st = () => p.evaluate(() => JSON.parse(localStorage.getItem('money-app-v1')));
-  const shot = async (n) => { if (OUT) await p.screenshot({ path: OUT + '/v58-' + n + '.png' }); };
+  const shot = async (n) => { if (OUT) await p.screenshot({ path: OUT + '/v581-' + n + '.png' }); };
   const tab = async (t) => { await p.click('[data-tab=' + t + ']'); await sleep(250); };
   const txt = (sel) => p.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }, sel);
   const cnt = async (sel) => p.evaluate((s) => document.querySelectorAll(s).length, sel);
@@ -45,6 +45,8 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   const guess = await p.evaluate((id) => CsvImport.guessBillMonth(JSON.parse(localStorage.getItem('money-app-v1')).cards.find((c) => c.id === id), [{ date: '2026-10-31' }], Logic.today()), cardA.id);
   ck('請求月の推定が選ばれている ' + guess, (await p.$eval('#csvMonth', (e) => e.value)) === guess && (await txt('#csvMonth option:checked')).includes('推定'));
   ck('支出は赤い −¥、返金は緑の +¥', await p.evaluate(() => { const r = [...document.querySelectorAll('#dlg .csv-rows .row')]; const neg = r[0].querySelector('.neg-t'), pos = r.find((x) => x.textContent.includes('+¥500')); return !!neg && neg.textContent.startsWith('−¥') && !!pos && !!pos.querySelector('.pos-t'); }));
+  const tags = await p.evaluate(() => [...document.querySelectorAll('#dlg .csv-rows .tag.sug')].map((x) => x.closest('b').textContent));
+  ck('「毎月？」タグ: Netflix・電気の2行 ' + JSON.stringify(tags), tags.length === 2 && tags.every((x) => x.endsWith('毎月？')));
   ck('列の割り当てを変更できる', (await cnt('#dlg [data-act=csv-map]')) === 1);
   await p.evaluate(() => { const s = document.querySelector('#dlg .sheet'); s.scrollTop = 0; });
   await shot('1-import-preview');
@@ -57,6 +59,16 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   ck('先月との比較 ' + cmp, !!cmp && cmp.includes('先月'));
   const sg = await p.evaluate(() => [...document.querySelectorAll('#dlg .caSug')].map((x) => ({ name: x.closest('.csv-act').querySelector('b').textContent, on: x.checked })));
   ck('候補: Netflix（チェック）・電気代（チェックなし） ' + JSON.stringify(sg), sg.length === 2 && sg[0].name === 'Netflix' && sg[0].on && sg[1].name === '電気代' && !sg[1].on);
+  const why = await p.evaluate(() => [...document.querySelectorAll('#dlg .csv-act small')].map((x) => x.textContent));
+  ck('理由: 定額／変動を書き分け', why.some((x) => x.includes('定額サービスの名前に一致')) && why.some((x) => x.includes('毎月ありそうな支払い（金額は変動）')));
+  ck('ボタン「2件を登録」→ 電気代ON「3件を登録」→ 全OFF「明細だけ保存」', await (async () => {
+    const b = () => txt('#caApply'); const a = await b();
+    await p.click('#dlg .caSug[data-i="1"]'); const c = await b();
+    await p.click('#dlg .caSug[data-i="1"]'); await p.click('#dlg .caSug[data-i="0"]'); await p.click('#caActual'); const d = await b();
+    await p.click('#caActual'); await p.click('#dlg .caSug[data-i="0"]');
+    return a === '2件を登録' && c === '3件を登録' && d === '明細だけ保存' && (await b()) === '2件を登録'; })());
+  ck('説明は1行・？で開閉', (await txt('#dlg .csv-once')).includes('同じファイルをもう一度読み込んでも二重になりません') && await p.$eval('#dlg .csv-more', (e) => e.hidden) && (await (async () => { await p.click('#dlg [data-act=csv-more]'); return p.$eval('#dlg .csv-more', (e) => !e.hidden); })()));
+  await p.click('#dlg [data-act=csv-more]');
   await shot('2-import-actions');
   await clickIn('#dlg [data-act=csv-apply]');
   ck('閉じる・確認なし（新しい確定額）', !(await p.$eval('#dlg', (e) => e.open)) && (await cnt('dialog.cdlg[open]')) === 0);
