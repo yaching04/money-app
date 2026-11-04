@@ -817,6 +817,16 @@ t('axisTicks: 目盛りは2本以上（1本だけにならない）', () => {
   assert.deepStrictEqual(axis(116700000, 124000000), ['1.18億', '1.2億', '1.22億', '1.24億']);
   for (const [lo, hi] of [[299900, 300010], [4900, 5000], [-21000, -19900], [0, 7]]) assert.ok(axis(lo, hi).length >= 2, lo + '..' + hi);
 });
+t('axisTicks: ランダム（性質テスト）でも必ず2本以上・ラベル重複なし', () => {
+  let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 20000; i++) {
+    const base = Math.round((rnd() - 0.2) * 10 ** (1 + rnd() * 9)), span = rnd() * 10 ** (rnd() * 6);
+    const ts = L0.axisTicks(base, base + span);
+    assert.ok(ts.length >= 2, base + '+' + span);
+    assert.strictEqual(new Set(ts.map((t) => t.label)).size, ts.length, base + '+' + span);
+  }
+  assert.ok(L0.axisTicks(300000, 300030).length >= 2); assert.ok(L0.axisTicks(5, 5).length >= 2);
+});
 t('axisLabel: 小数の桁数どおりに四捨五入', () => {
   assert.strictEqual(L0.axisLabel(299500, 1), '30万');
   assert.strictEqual(L0.axisLabel(299500, 2), '29.95万');

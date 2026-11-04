@@ -142,8 +142,8 @@ const base = (o) => Object.assign({ version: 2, accounts: [A()], cards: [], paym
   await shot('home');
   for (const wd of [320, 375, 390]) {
     await p.setViewport({ width: wd, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }); await sleep(250);
-    const fit = await p.evaluate(() => { const l = document.querySelector('.hero .nextst'), r = l.querySelector('.st-r').getBoundingClientRect(), b = l.getBoundingClientRect(); return { ok: r.right <= b.right + 0.5 && r.left >= b.left && b.height <= 48, h: b.height }; });
-    ck(wd + 'px: 1行目は1行で「→ 残り」まで見える [' + fit.h + ']', fit.ok);
+    const fit = await p.evaluate(() => { const l = document.querySelector('.hero .nextst'), r = l.querySelector('.st-r').getBoundingClientRect(), b = l.getBoundingClientRect(); return { ok: r.right <= b.right + 0.5 && r.left >= b.left && b.height <= (innerWidth <= 360 ? 72 : 48), h: b.height }; });
+    ck(wd + 'px: 「→ 残り」まで見える（360px以下は2行に分ける：v6.0.3） [' + fit.h + ']', fit.ok);
   }
   await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }); await sleep(200);
   // 設定でずらさない

@@ -48,7 +48,7 @@ const seed = { version: 2, accounts: [{ id: 'a1', name: '銀行', balance: 20000
   { let s = '利用日,利用店名,利用金額\n', i = 0; while (s.length < 5.5 * 1024 * 1024) { s += '2026/10/' + String(i % 28 + 1).padStart(2, '0') + ',店' + i + ',' + (100 + i % 900) + '\n'; i++; } fs.writeFileSync(big, s); }
   r = await openCsv(big); ck('5MB超: 「大きすぎます」を表示', /大きすぎます/.test(r.err)); await closeAll();
 
-  r = await openCsv(FX('qa-bom-crlf.csv')); ck('BOM付き・CRLF: 2件読める [' + r.sum + ']', r.h === '明細の確認' && r.rows.length === 2 && !/\uFEFF/.test(r.sheet)); await closeAll();
+  r = await openCsv(FX('qa-bom-crlf.csv')); ck('BOM付き・CRLF: 2件読める [' + r.sum + ']', r.h === '中身の確認' && r.rows.length === 2 && !/\uFEFF/.test(r.sheet)); await closeAll();
   r = await openCsv(FX('qa-sjis.csv')); ck('Shift_JIS: 文字化けせず2件・（Shift_JIS）表示', r.rows.length === 2 && /テスト店舗/.test(r.rows[0]) && /Shift_JIS/.test(r.sheet)); await closeAll();
   r = await openCsv(FX('qa-ragged.csv')); ck('列数が不揃い: 正しい3行だけ読む [' + r.sum + ']', r.rows.length === 3); await closeAll();
   r = await openCsv(FX('qa-with-total.csv')); ck('「合計」行は明細に含めない', r.rows.length === 1); await closeAll();

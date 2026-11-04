@@ -38,7 +38,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   await p.select('#csvCard', cardA.id);
   ck('iPhoneでの用意のしかた（折りたたみ）', (await cnt('#dlg details.csv-help')) === 1);
   await pick('rakuten-like.csv');
-  ck('ステップ2: 明細の確認', (await step()) === '明細の確認');
+  ck('ステップ2: 明細の確認', (await step()) === '中身の確認');
   ck('7件を一覧', (await cnt('#dlg .csv-rows .row')) === 7);
   const sum = await txt('#dlg .csv-sum');
   ck('合計 ¥23,990（返金1件を含む） ' + sum, sum.includes('−¥23,990') && sum.includes('返金1件') && sum.includes('7件'));
@@ -137,7 +137,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   await p.select('#mAmt', '2'); await sleep(200);
   ck('1件目のプレビュー', (await txt('#dlg .csv-prev')).includes('テスト水道局'));
   await clickIn('#dlg [data-act=csv-map-ok]');
-  ck('割り当て → 確認へ（4件）', (await step()) === '明細の確認' && (await cnt('#dlg .csv-rows .row')) === 4);
+  ck('割り当て → 確認へ（4件）', (await step()) === '中身の確認' && (await cnt('#dlg .csv-rows .row')) === 4);
   await clickIn('#dlg [data-act=csv-back]'); await clickIn('#dlg [data-act=close-dlg]');
   ck('閉じると何も保存しない', !((await st()).imports[cardB.id]));
 

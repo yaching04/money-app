@@ -630,7 +630,10 @@
     const dec = Math.min(4, Math.max(0, Math.ceil(-Math.log10(step / 10000) - 1e-9)));
     let out = vals.map((v) => ({ v, label: axisLabel(v, dec) }));
     const dup = out.some((t, i) => i && t.label === out[i - 1].label);
-    if (dup && out.length > 1) { out = [out[0], out[out.length - 1]]; if (out[0].label === out[1].label) out = [out[1]]; }
+    if (dup && out.length > 1) out = [out[0], out[out.length - 1]];
+    // v6.0.3: 目盛りは必ず2本以上（上下）。ラベルが同じになるときは円単位で表示
+    if (out.length < 2) { const a = Math.floor(lo), b = Math.ceil(hi) > a ? Math.ceil(hi) : a + 1; out = [{ v: a, label: axisLabel(a, 4) }, { v: b, label: axisLabel(b, 4) }]; }
+    if (out[0].label === out[out.length - 1].label) out = out.map((t) => ({ v: t.v, label: (t.v < 0 ? '−' : '') + Math.abs(t.v).toLocaleString('ja-JP') }));
     return out;
   }
 

@@ -95,7 +95,15 @@
 
   /* ---------- チャート（SVG・外部ライブラリなし） ---------- */
   function chartGeo(ds, bars) {
-    const W = 360, padL = bars ? 34 : 48, padR = 8, top = 24, hL = bars ? 0 : 150, gap = 0, hB = bars ? 140 : 0, bot = 22;
+    // v6.0.3: 縦軸ラベルの幅を見積もって左余白を決める（大きい残高でも切れない）
+    let padL = bars ? 34 : 48;
+    if (!bars) {
+      const r0 = (ds.max - ds.min) || Math.max(1, Math.abs(ds.max) * 0.1), lo0 = ds.min < 0 ? ds.min - r0 * 0.12 : Math.max(0, ds.min - r0 * 0.35), hi0 = ds.max + r0 * 0.12;
+      const lw = (t) => [...t].reduce((w, ch) => w + (/[0-9.]/.test(ch) ? 6.6 : 11.8), 0);
+      const mx = L.axisTicks(lo0, hi0).reduce((m, t) => Math.max(m, lw(t.label)), 0);
+      padL = Math.min(120, Math.max(48, Math.ceil(mx + 10)));
+    }
+    const W = 360, padR = 8, top = 24, hL = bars ? 0 : 150, gap = 0, hB = bars ? 140 : 0, bot = 22;
     const n = ds.days.length, cw = (W - padL - padR) / n, H = top + hL + gap + hB + bot;
     const X = (i) => padL + (i + 0.5) * cw;
     const range = (ds.max - ds.min) || Math.max(1, Math.abs(ds.max) * 0.1);
@@ -211,9 +219,9 @@
     let h = '<div class="status">';
     if (nx) {
       const after = L.project(state, nx.date, scope).endBalance;
-      h += `<button class="st-line nextst" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-k"><span class="st-kl">次の引き落とし</span><span class="st-ks">次回</span></span><b class="st-d">${md(nx.date).replace(/\(.\)$/, (w) => `<span class="st-dw">${w}</span>`)}</b><span class="st-n">${esc(nx.top.label)}${nx.others ? `<span class="st-o"> ほか${nx.others}件</span>` : ''}</span><span class="st-ar"><span class="st-a sg">${nx.top.confirmed ? '' : PV + ' '}−${yenAbs(nx.top.amount)}</span><span class="st-r">→ 残り <b>${yen(after)}</b></span></span></button>`;
+      h += `<button class="st-line nextst" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-k"><span class="st-kl">次の引き落とし</span><span class="st-ks">次回</span></span><b class="st-d">${md(nx.date).replace(/\(.\)$/, (w) => `<span class="st-dw">${w}</span>`)}</b><span class="st-n">${esc(nx.top.label)}${nx.others ? `<span class="st-o"> ほか${nx.others}件</span>` : ''}</span><span class="st-br" aria-hidden="true"></span><span class="st-ar"><span class="st-a sg">${nx.top.confirmed ? '' : PV + ' '}−${yenAbs(nx.top.amount)}</span><span class="st-r">→ 残り <b>${yen(after)}</b></span></span></button>`;
     } else h += `<div class="st-line nextst"><span class="st-k">次の引き落とし</span><span class="st-n">60日以内にはありません</span></div>`;
-    if (neg) h += `<button class="st-line warnst" data-act="jump" data-date="${neg.date}" data-neg="1" aria-label="マイナスになる日を見る"><span class="st-ic" aria-hidden="true">⚠</span><span class="st-w">${neg.provisional ? PV + ' ' : ''}${md(neg.date)}に${neg.accountName ? esc(neg.accountName) + 'が' : '残高が'}</span><b class="st-wa sg">${yen(neg.balance)}</b><span class="st-wt">になる見込み</span></button>`;
+    if (neg) h += `<button class="st-line warnst" data-act="jump" data-date="${neg.date}" data-neg="1" aria-label="マイナスになる日を見る"><span class="st-ic" aria-hidden="true">⚠</span><span class="st-w">${neg.provisional ? PV + ' ' : ''}${md(neg.date)}に${neg.accountName ? esc(neg.accountName) + 'が' : '残高が'}</span><span class="st-br" aria-hidden="true"></span><b class="st-wa sg">${yen(neg.balance)}</b><span class="st-wt">になる見込み</span></button>`;
     return h + '</div>';
   }
   /* ヒーロー（大きな残高・日付・クイック選択）。ドラッグ中はここだけ作り直す */
@@ -352,7 +360,7 @@
         <button class="btn sm sec" data-act="actuals" data-kind="pay" data-id="${p.id}">実績</button></div>`;
       }
       return `<div class="row ${p.active === false ? 'off' : ''} ${done || (p.loan && L.loanInfo(state, p, todayStr()).done) ? 'ldone' : ''}">
-        <div class="l tap" data-act="edit-pay" data-id="${p.id}"><b class="nm">${esc(p.name)}${nameTag}</b>${meta ? `<small>${meta}</small>` : ''}</div>
+        <div class="l tap" data-act="edit-pay" data-id="${p.id}"><div class="nmw"><b class="nm">${esc(p.name)}</b>${nameTag}</div>${meta ? `<small>${meta}</small>` : ''}</div>
         <div class="r tap" data-act="edit-pay" data-id="${p.id}">${right}</div>${sw}</div>`;
     };
     const hasSample = [].concat(state.accounts, state.cards, state.payments, state.incomes).some((x) => x.sample);
@@ -379,12 +387,12 @@
   function renderAcct() {
     const nx = nextEvents();
     let h = (state.accounts.length ? '' : needAcctGuide()) + `<div class="sec-h"><h3>🏦 口座</h3><button class="btn sm" data-act="add-account">＋ 追加</button></div><div class="card">`;
-    h += state.accounts.length ? state.accounts.map((a) => `<div class="row"><div class="l tap" data-act="edit-account" data-id="${a.id}"><b class="nm">${esc(a.name)}${sampleTag(a)}</b><small>${md(a.asOf)}時点の残高</small></div><button class="btn sm sec" data-act="edit-balance" data-id="${a.id}">残高変更</button><div class="r ${a.balance < 0 ? 'neg-t' : ''}">${yen(a.balance)}</div></div>`).join('') : '<div class="empty">口座が未登録です</div>';
+    h += state.accounts.length ? state.accounts.map((a) => `<div class="row"><div class="l tap" data-act="edit-account" data-id="${a.id}"><div class="nmw"><b class="nm">${esc(a.name)}</b>${sampleTag(a)}</div><small>${md(a.asOf)}時点の残高</small></div><button class="btn sm sec" data-act="edit-balance" data-id="${a.id}">残高変更</button><div class="r ${a.balance < 0 ? 'neg-t' : ''}">${yen(a.balance)}</div></div>`).join('') : '<div class="empty">口座が未登録です</div>';
     h += `</div><div class="sec-h"><h3>💳 カード</h3><button class="btn sm" data-act="add-card">＋ 追加</button></div><div class="card">`;
-    h += state.cards.length ? state.cards.map((c) => { const a = byId(state.accounts, c.accountId); return `<div class="row"><div class="l tap" data-act="edit-card" data-id="${c.id}"><b class="nm">${esc(c.name)}${c.variable !== false ? '<span class="tag var">変動</span>' : '<span class="tag">固定</span>'}${sampleTag(c)}</b><small>請求額がわかる日 毎月${dl(c.fixDay)} → 引き落とし日 毎月${dl(c.withdrawDay)}</small><small>${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}</small></div>${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}<div class="r tap" data-act="edit-card" data-id="${c.id}">›</div></div>`; }).join('') : '<div class="empty">カードが未登録です</div>';
+    h += state.cards.length ? state.cards.map((c) => { const a = byId(state.accounts, c.accountId); return `<div class="row"><div class="l tap" data-act="edit-card" data-id="${c.id}"><div class="nmw"><b class="nm">${esc(c.name)}</b>${c.variable !== false ? '<span class="tag var">変動</span>' : '<span class="tag">固定</span>'}${sampleTag(c)}</div><small>請求額がわかる日 毎月${dl(c.fixDay)} → 引き落とし日 毎月${dl(c.withdrawDay)}</small><small>${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}</small></div>${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}<div class="r tap" data-act="edit-card" data-id="${c.id}">›</div></div>`; }).join('') : '<div class="empty">カードが未登録です</div>';
     h += `</div><div class="sec-h"><h3>💰 収入（給与など）</h3><button class="btn sm" data-act="add-income">＋ 追加</button></div><div class="card">`;
     h += state.incomes.length ? state.incomes.map((i) => { const a = byId(state.accounts, i.accountId); const e = nx['inc:' + i.id];
-      return `<div class="row ${i.active === false ? 'off' : ''} ${onceDone(i, i.day) ? 'ldone' : ''}"><div class="l tap" data-act="edit-income" data-id="${i.id}"><b class="nm">${esc(i.name)}${i.variable ? '<span class="tag var">変動</span>' : ''}${sampleTag(i)}</b><small>${esc(freqText(i, i.day))} → ${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}${i.variable ? '・請求額がわかる日' + (i.fixDay ? dl(i.fixDay) : '＝入金日') : ''}${i.active === false ? '・停止中' : ''}${e && e.nominal ? `・次回 ${md(e.date)}${L.shiftNote(e)}` : ''}</small></div>${i.variable ? `<button class="btn sm sec" data-act="actuals" data-kind="inc" data-id="${i.id}">実績</button>` : ''}<div class="r tap" data-act="edit-income" data-id="${i.id}">${i.variable && e ? sgn(1, e.amount, e.confirmed) : sgn(1, i.amount, true)}</div></div>` + pastHintHtml('inc', i.id); }).join('') : '<div class="empty">収入が未登録です（登録すると残高予測に反映されます）</div>';
+      return `<div class="row ${i.active === false ? 'off' : ''} ${onceDone(i, i.day) ? 'ldone' : ''}"><div class="l tap" data-act="edit-income" data-id="${i.id}"><div class="nmw"><b class="nm">${esc(i.name)}</b>${i.variable ? '<span class="tag var">変動</span>' : ''}${sampleTag(i)}</div><small>${esc(freqText(i, i.day))} → ${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}${i.variable ? '・請求額がわかる日' + (i.fixDay ? dl(i.fixDay) : '＝入金日') : ''}${i.active === false ? '・停止中' : ''}${e && e.nominal ? `・次回 ${md(e.date)}${L.shiftNote(e)}` : ''}</small></div>${i.variable ? `<button class="btn sm sec" data-act="actuals" data-kind="inc" data-id="${i.id}">実績</button>` : ''}<div class="r tap" data-act="edit-income" data-id="${i.id}">${i.variable && e ? sgn(1, e.amount, e.confirmed) : sgn(1, i.amount, true)}</div></div>` + pastHintHtml('inc', i.id); }).join('') : '<div class="empty">収入が未登録です（登録すると残高予測に反映されます）</div>';
     return h + `</div><p class="note">カードで払うものは「支払い」で登録すると、カードごとに1つの請求額にまとめて引き落とし日に口座から引かれます。カードが「変動」の場合、請求額がわかる日に実績を入力します（それまでは直近3回の平均、実績がなければ登録額の合計で仮計算）。</p>`;
   }
 
@@ -952,7 +960,7 @@
       const pm = CI.previewMerge(state, card.id, csv.month, rows), had = CI.importedRows(state, card.id, csv.month).length;
       const MAX = 40;
       const sgKeys = new Set(CI.suggestRecurring(state, card.id, csv.month, rows).map((s) => s.key));
-      h = `<h2>明細の確認</h2>${csvSteps(2)}
+      h = `<h2>中身の確認</h2>${csvSteps(2)}
         <p class="hint">${esc(card.name)}・${esc(csv.file)}${csv.encoding === 'shift_jis' ? '（Shift_JIS）' : ''}</p>
         <div class="csv-sum"><p>${csvSumText(rows.length, total, refunds.length)}</p><small>利用日 ${md(ds[0])} 〜 ${md(ds[ds.length - 1])}</small></div>
         ${dr.outliers.length ? `<p class="hint csv-warn">ほかの明細と日付が大きく離れた行が${dr.outliers.length}件あります（${dr.outliers.slice(0, 3).map((r) => esc(r.date.replace(/-/g, '/'))).join('・')}${dr.outliers.length > 3 ? ' ほか' : ''}）。請求月の推定には使っていません。日付が正しいか確認してください。</p>` : ''}

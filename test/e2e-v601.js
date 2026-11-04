@@ -42,10 +42,10 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   for (const w of [320, 375, 390]) {
     await vp(w);
     await load(small); let L = await line();
-    ck(`${w}px 1行目: 名前・引き落とし額・残り [${L.t}]`, L.t.includes('動画') && L.a === '−¥1,000' && L.r === '→ 残り ¥299,000' && L.aIn && L.rIn && L.aR && L.h <= 48 && !L.kCut);
+    ck(`${w}px 1行目: 名前・引き落とし額・残り [${L.t}]`, L.t.includes('動画') && L.a === '−¥1,000' && L.r === '→ 残り ¥299,000' && L.aIn && L.rIn && L.aR && L.h <= (w <= 360 ? 72 : 48) && !L.kCut);
     if (w === 390) await shot('home');
     await load(longp); L = await line();
-    ck(`${w}px 長い名前: 名前だけ…・金額と残りは全部見える`, L.nEll && L.nCut && L.aIn && L.rIn && L.a === '−¥1,000' && L.h <= 48 && !L.kCut);
+    ck(`${w}px 長い名前: 名前だけ…・金額と残りは全部見える`, L.nEll && L.nCut && L.aIn && L.rIn && L.a === '−¥1,000' && L.h <= (w <= 360 ? 72 : 48) && !L.kCut);
     await load(big); L = await line();
     ck(`${w}px 大きな金額・仮: 金額と残りは全部見える [${L.a} ${L.r}]`, L.a === '仮 −¥1,234,567' && L.rIn && L.aIn && L.r === '→ 残り ¥12,222,222' && !L.kCut);
   }

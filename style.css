@@ -480,3 +480,22 @@ body.typing .tabs,body.typing .fab{display:none}
 .hero .nextst .st-k{flex:none;overflow:visible}
 .hero .nextst .st-n{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hero .nextst .st-ar{flex:none;margin-left:auto;display:flex;gap:8px;white-space:nowrap}
+
+/* v6.0.3 */
+.nmw{display:flex;align-items:flex-start;flex-wrap:nowrap;min-width:0}
+.nmw>.nm{min-width:0;flex:0 1 auto}
+.nmw>.tag,.nmw>span{flex-shrink:0;white-space:nowrap}
+.hero .st-br{display:none}
+@media (max-width:360px){
+.hero .st-line.nextst,.hero .st-line.warnst{flex-wrap:wrap;row-gap:0}
+.hero .st-br{display:block;flex:0 0 100%;height:0}
+.hero .nextst .st-n{flex:1 1 0;min-width:0}
+.hero .nextst .st-ar{margin-left:auto}
+.hero .warnst .st-w{flex:1 1 0;min-width:0;white-space:normal}
+.hero .warnst .st-wa{margin-left:auto;white-space:nowrap}
+.hero .warnst .st-wt{flex:none}
+}
+/* v6.0.3: 広い幅でも収まらないときは金額を次の行へ */
+.hero .st-line.warnst{flex-wrap:wrap;row-gap:0}
+.hero .warnst .st-w{flex:0 1 auto;min-width:0;max-width:calc(100% - 24px)}
+.hero .warnst .st-wa{white-space:nowrap}
