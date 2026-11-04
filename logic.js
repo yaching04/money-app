@@ -433,13 +433,15 @@
     if (!Array.isArray(o.accounts)) return { ok: false, error: 'このアプリのバックアップではないようです（口座のデータがありません）。' };
     if (keys.some((k) => o[k] != null && !Array.isArray(o[k]))) return { ok: false, error: 'データの一部が壊れています。' };
     if (o.actuals != null && (typeof o.actuals !== 'object' || Array.isArray(o.actuals))) return { ok: false, error: '実績のデータが壊れています。' };
+    if (o.imports != null && (typeof o.imports !== 'object' || Array.isArray(o.imports))) return { ok: false, error: '明細のデータが壊れています。' };
     for (const k of keys) for (const x of (o[k] || [])) if (!x || typeof x !== 'object' || !x.id) return { ok: false, error: 'データの一部が壊れています（IDのない項目があります）。' };
     for (const a of o.accounts) if (!isFinite(Number(a.balance))) return { ok: false, error: '口座の残高が数字ではありません。' };
     if (Number(o.version) > SCHEMA_VERSION) return { ok: false, error: '新しいバージョンのアプリで作られたバックアップです。アプリを更新してから読み込んでください。' };
     const st = migrate(o);
     delete st.exportedAt; delete st.app;
     return { ok: true, state: st, exportedAt: typeof o.exportedAt === 'string' ? o.exportedAt : null, oldFormat: (Number(o.version) || 1) < SCHEMA_VERSION,
-      counts: { accounts: st.accounts.length, cards: st.cards.length, payments: st.payments.length, incomes: st.incomes.length, actuals: Object.keys(st.actuals).length } };
+      counts: { accounts: st.accounts.length, cards: st.cards.length, payments: st.payments.length, incomes: st.incomes.length, actuals: Object.keys(st.actuals).length,
+        imports: Object.values(st.imports).reduce((n, byM) => n + Object.keys(byM).length, 0) } };
   }
   /** バックアップのファイル名 money-backup-YYYYMMDD.json */
   const backupFileName = (todayStr) => 'money-backup-' + todayStr.replace(/-/g, '') + '.json';
@@ -459,6 +461,18 @@
     for (const k of ['accounts', 'cards', 'payments', 'incomes']) s[k] = Array.isArray(o[k]) ? o[k] : [];
     if (o.actuals && typeof o.actuals === 'object' && !Array.isArray(o.actuals)) s.actuals = o.actuals;
     s.settings = Object.assign(s.settings, o.settings || {});
+    // v5.8 明細CSVの取り込み { cardId: { 'YYYY-MM': { at, rows: [[日付, 店名, 金額]] } } }。形の崩れた部分は捨てる
+    s.imports = {};
+    if (o.imports && typeof o.imports === 'object' && !Array.isArray(o.imports)) {
+      for (const [cid, byM] of Object.entries(o.imports)) {
+        if (!byM || typeof byM !== 'object' || Array.isArray(byM)) continue;
+        for (const [m, v] of Object.entries(byM)) {
+          if (!/^\d{4}-\d{2}$/.test(m) || !v || !Array.isArray(v.rows)) continue;
+          const rows = v.rows.filter((r) => Array.isArray(r) && r.length >= 3 && isFinite(Number(r[2])));
+          (s.imports[cid] = s.imports[cid] || {})[m] = { at: typeof v.at === 'string' ? v.at : null, rows };
+        }
+      }
+    }
     for (const c of s.cards) {
       if (c.fixDay == null) c.fixDay = null;
       // v1 のカードは請求額固定の挙動だったので変動なしに移行。v2 は未指定なら変動(既定)

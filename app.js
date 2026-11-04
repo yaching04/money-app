@@ -42,6 +42,7 @@
       const [kind, id] = k.split(':');
       if (!itemOf(kind, id)) delete state.actuals[k];
     }
+    if (window.CsvImport) CsvImport.cleanImports(state);
   }
 
   let toastTimer;
@@ -346,7 +347,7 @@
         <div class="r tap" data-act="edit-pay" data-id="${p.id}">${right}</div>${sw}</div>`;
     };
     const hasSample = [].concat(state.accounts, state.cards, state.payments, state.incomes).some((x) => x.sample);
-    let h = `<div class="pagebar"><span class="sub">${hasSample ? 'サンプルデータを表示中（【例】がサンプルです）' : ''}</span><button class="q" data-act="toggle-payhelp" aria-label="使い方を表示" aria-expanded="${ui.payHelp}">？</button></div>`;
+    let h = `<div class="pagebar"><span class="sub">${hasSample ? 'サンプルデータを表示中（【例】がサンプルです）' : ''}</span>${state.cards.length ? '<button class="btn sm sec csv-btn" data-act="csv-open">明細CSVを読み込む</button>' : ''}<button class="q" data-act="toggle-payhelp" aria-label="使い方を表示" aria-expanded="${ui.payHelp}">？</button></div>`;
     if (ui.payHelp) h += `<div class="info helpcard"><span>タップで編集、右のスイッチで有効/停止。「変動」は毎月金額が変わる項目で、「実績」から確定額を記録できます。</span><button class="x" data-act="close-payhelp" aria-label="閉じる">✕</button></div>`;
     if (!state.payments.length) h += `<div class="card empty">支払いが未登録です。右下の ＋ から追加してください。</div>`;
     for (const c of state.cards) {
@@ -379,6 +380,12 @@
   }
 
   /* ---------- 集計（サブ画面） ---------- */
+  // v5.8 読み込んだ明細の店別合計（カード別の各行の下）
+  function impDetails(e) {
+    if (!window.CsvImport) return '';
+    const mt = CsvImport.merchantTotals(state, e.refId, e.month); if (!mt.length) return '';
+    return `<details><summary>明細（CSV）の店別 ${mt.length}件</summary><ul class="items">${mt.map((x) => `<li>・${esc(x.name)}${x.count > 1 ? `（${x.count}回）` : ''} <span class="${x.amount < 0 ? 'pos-t' : ''}">${x.amount < 0 ? '+' : ''}${yenAbs(x.amount)}</span></li>`).join('')}</ul></details>`;
+  }
   function renderSummary() {
     if (!state.accounts.length) return needAcctGuide();
     const mk = sumMonth || L.monthKey(todayStr());
@@ -397,7 +404,7 @@
     h += `<div class="card"><h2><span>カード別（この月に引き落とされる請求）</span></h2>`;
     const mxC = Math.max(1, ...cardEv.map((e) => e.amount));
     h += cardEv.length ? cardEv.map((e) => `<div class="srow"><div class="stop"><div class="l"><b>${esc(e.label)}</b><small>引落 ${md(e.date)}・登録${e.items.length}件</small></div><div class="r">${e.confirmed ? '<span class="sg neg-t">' + yenAbs(e.amount) + '</span>' : '<span class="sg">' + PV + ' <span class="amt-p">' + yenAbs(e.amount) + '</span></span>'}</div></div>${bar(e.amount, mxC)}
-      ${e.items.length ? `<details><summary>内訳（登録額）${e.items.length}件</summary><ul class="items">${e.items.map((i) => `<li>・${esc(i.name)} ${yenAbs(i.amount)}</li>`).join('')}</ul></details>` : ''}</div>`).join('') : '<div class="empty">この月のカード引き落としはありません</div>';
+      ${e.items.length ? `<details><summary>内訳（登録額）${e.items.length}件</summary><ul class="items">${e.items.map((i) => `<li>・${esc(i.name)} ${yenAbs(i.amount)}</li>`).join('')}</ul></details>` : ''}${impDetails(e)}</div>`).join('') : '<div class="empty">この月のカード引き落としはありません</div>';
     h += `</div>`;
     // 支払い別
     const rows = [];
@@ -434,7 +441,7 @@
       <button class="btn sec" data-act="sample">サンプルデータを追加</button>
       ${hasSample ? '<button class="btn danger" data-act="del-sample">サンプルデータだけ全て削除</button>' : ''}</div>
       <div class="card"><h2>全データ削除</h2><button class="btn danger" data-act="reset">すべて削除して初期状態に戻す</button></div>
-      <p class="note" style="text-align:center">データ形式 v${L.SCHEMA_VERSION}・口座${state.accounts.length}・カード${state.cards.length}・支払い${state.payments.length}・収入${state.incomes.length}・実績${Object.keys(state.actuals).length}</p>`;
+      <p class="note" style="text-align:center">データ形式 v${L.SCHEMA_VERSION}・口座${state.accounts.length}・カード${state.cards.length}・支払い${state.payments.length}・収入${state.incomes.length}・実績${Object.keys(state.actuals).length}・明細${Object.values(state.imports || {}).reduce((n, m) => n + Object.keys(m).length, 0)}か月分</p>`;
   }
 
   function backupCard() {
@@ -616,7 +623,8 @@
         field('fixDay', '請求額がわかる日（明細の確定日・毎月）', dayInput('fixDay', c ? c.fixDay : ''), '締め後に、明細で請求額がわかる日。この日の朝8:00に金額の入力をお知らせします。' + DAYHINT) +
         field('withdrawDay', '引き落とし日（毎月）', dayInput('withdrawDay', c ? c.withdrawDay : ''), DAYHINT) +
         field('accountId', '引き落とし口座', `<select id="accountId" name="accountId">${acctOptions(c ? c.accountId : state.accounts[0].id)}</select>`) +
-        `<div class="f chk"><label><input type="checkbox" name="variable" ${!c || c.variable !== false ? 'checked' : ''}> 請求額は毎月変わる（請求額がわかる日に金額を入力する）</label><small>オフ＝カード内の支払い合計を常に確定額として扱います。</small></div>`,
+        `<div class="f chk"><label><input type="checkbox" name="variable" ${!c || c.variable !== false ? 'checked' : ''}> 請求額は毎月変わる（請求額がわかる日に金額を入力する）</label><small>オフ＝カード内の支払い合計を常に確定額として扱います。</small></div>` +
+        (c ? `<button type="button" class="btn sec" data-act="csv-open" data-id="${c.id}">このカードの明細CSVを読み込む</button>` : ''),
       onSubmit(fd) {
         const v = { name: fd.get('name').trim(), fixDay: day(fd, 'fixDay'), withdrawDay: day(fd, 'withdrawDay'), accountId: fd.get('accountId'), variable: fd.get('variable') === 'on' };
         if (!v.name) return 'カード名を入力してください';
@@ -787,6 +795,123 @@
     $('#am', dlg).addEventListener('change', up);
   }
 
+  /* ---------- v5.8 明細CSVの読み込み ----------
+   * 1/3 カードを選んでファイルを選ぶ → 2/3 中身・合計・請求月の確認（列がわからなければ列の割り当て）→ 3/3 チェックした内容を登録 */
+  const CI = window.CsvImport;
+  let csv = null;   // { cardId, step, file, encoding, text, an, month, sugg }
+  const csvCard = () => csv && byId(state.cards, csv.cardId);
+  const csvAmt = (n) => sgn(-n, Math.abs(n), true);   // 支出=赤「−¥」・返金=緑「+¥」
+  function openCsv(cardId) {
+    if (!state.cards.length) { toast('先にカードを登録してください'); return; }
+    csv = { cardId: byId(state.cards, cardId) ? cardId : state.cards[0].id, step: 'card' };
+    drawCsv();
+    const dlg = $('#dlg'); if (!dlg.open) dlg.showModal();
+  }
+  const csvSteps = (n) => `<p class="csv-step">${[1, 2, 3].map((i) => `<span class="${i === n ? 'on' : ''}">${i}</span>`).join('')}<b>${['カードとファイル', '中身の確認', '登録する内容'][n - 1]}</b></p>`;
+  function billOpt(card, m) {
+    const w = L.monthlyDates(Number(card.withdrawDay), L.addDays(m + '-01', -1), L.monthLast(m))[0];
+    return ymLabel(m) + (w ? `（${md(w)} 引き落とし）` : '');
+  }
+  function drawCsv() {
+    const dlg = $('#dlg'), card = csvCard(); if (!card) return;
+    let h = '';
+    if (csv.step === 'card') {
+      h = `<h2>明細CSVを読み込む</h2>${csvSteps(1)}
+        <div class="f"><label for="csvCard">どのカードの明細ですか</label><select id="csvCard">${state.cards.map((c) => opt(c.id, c.name, c.id === csv.cardId)).join('')}</select></div>
+        <p class="hint">カード会社の会員サイトやアプリでダウンロードした「利用明細」のCSVファイルを選んでください。データはこの端末の中だけで読み込み、外部には送りません。</p>
+        <button type="button" class="btn" data-act="csv-pick">CSVファイルを選ぶ</button>
+        <input type="file" id="csvfile" accept=".csv,text/csv,text/comma-separated-values,application/vnd.ms-excel" hidden>
+        <details class="csv-help"><summary>iPhoneでCSVを用意するには</summary><ol>
+          <li>Safariでカード会社の会員サイトにログインし、利用明細（ご利用代金明細）の画面を開きます。</li>
+          <li>「CSV」「ダウンロード」などのボタンを押します。保存先はふつう「ファイル」アプリの「ダウンロード」です。</li>
+          <li>ここで「CSVファイルを選ぶ」→「ブラウズ」→「ダウンロード」から選びます。</li>
+          <li>スマホ表示ではCSVが出せないカード会社もあります。その場合は、Safariの「ぁあ」→「デスクトップ用Webサイトを表示」を試すか、パソコンでダウンロードしてiCloud Drive・AirDropで送ってください。</li></ol></details>
+        <button type="button" class="btn sec" data-act="close-dlg">閉じる</button>`;
+    } else if (csv.step === 'map') {
+      const tb = csv.an.table, mp = csv.an.map;
+      const sample = tb.find((r, i) => i > mp.header && r.some((c) => CI.parseDate(c))) || tb[mp.header + 1] || tb[0] || [];
+      const width = Math.max(...tb.slice(0, 50).map((r) => r.length));
+      const colOpts = (cur, none) => (none ? opt(-1, '（なし）', cur < 0) : '') + Array.from({ length: width }, (_, i) => opt(i, `列${i + 1}${mp.headers && mp.headers[i] ? '「' + mp.headers[i] + '」' : ''}：${(sample[i] || '').slice(0, 16)}`, i === cur)).join('');
+      const pv = CI.analyze(csv.text, { header: mp.header, date: mp.date, merchant: mp.merchant, amount: mp.amount, alt: -1 });
+      const r0 = pv.rows[0];
+      h = `<h2>列の割り当て</h2>${csvSteps(2)}
+        <p class="hint">${mp.method ? '自動の判定を変更できます。' : 'この明細の形式を自動で判定できませんでした。'}日付・店名・金額の列を選んでください。（例は1件目の行）</p>
+        ${field('mDate', '日付の列', `<select id="mDate">${colOpts(mp.date, false)}</select>`)}
+        ${field('mMer', '店名・内容の列', `<select id="mMer">${colOpts(mp.merchant, true)}</select>`)}
+        ${field('mAmt', '金額の列', `<select id="mAmt">${colOpts(mp.amount, false)}</select>`)}
+        <div class="csv-prev"><small>1件目の読み取り結果</small>${r0 ? `<div class="row"><div class="l"><b>${esc(r0.merchant)}</b><small>${md(r0.date)}</small></div><div class="r">${csvAmt(r0.amount)}</div></div><small>全${pv.rows.length}件・合計 ${yenAbs(pv.total)}</small>` : '<div class="empty">この割り当てでは明細を読み取れません</div>'}</div>
+        <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="card">戻る</button><button type="button" class="btn" data-act="csv-map-ok" ${r0 ? '' : 'disabled'}>この割り当てで進む</button></div>`;
+    } else if (csv.step === 'preview') {
+      const rows = csv.an.rows, total = csv.an.total, ds = rows.map((r) => r.date).sort();
+      const refunds = rows.filter((r) => r.amount < 0);
+      const guess = CI.guessBillMonth(card, rows, todayStr());
+      const months = CI.billMonthOptions(guess, 4, 2); if (!months.includes(csv.month)) months.push(csv.month); months.sort();
+      const pm = CI.previewMerge(state, card.id, csv.month, rows), had = CI.importedRows(state, card.id, csv.month).length;
+      const MAX = 40;
+      h = `<h2>明細の確認</h2>${csvSteps(2)}
+        <p class="hint">${esc(card.name)}・${esc(csv.file)}${csv.encoding === 'shift_jis' ? '（Shift_JIS）' : ''}</p>
+        <div class="csv-sum"><small>${rows.length}件の合計${refunds.length ? `（返金${refunds.length}件を含む）` : ''}</small><b class="${total > 0 ? 'neg-t' : total < 0 ? 'pos-t' : ''}">${total < 0 ? '+' : total > 0 ? '−' : ''}${yenAbs(total)}</b><small>利用日 ${md(ds[0])} 〜 ${md(ds[ds.length - 1])}</small></div>
+        ${field('csvMonth', 'どの月の請求ですか（引き落としの月）', `<select id="csvMonth">${months.map((m) => opt(m, billOpt(card, m) + (m === guess ? '・推定' : ''), m === csv.month)).join('')}</select>`, 'カードの「請求額がわかる日」「引き落とし日」と、明細の最後の利用日から推定しています。違うときは変更してください。')}
+        ${had ? `<p class="hint">この月は前にも読み込んでいます（${had}件）。同じ明細は二重に数えません：合わせて ${pm.count}件・${yenAbs(pm.total)}</p>` : ''}
+        <div class="csv-rows">${rows.slice(0, MAX).map((r) => `<div class="row"><div class="l"><b>${esc(r.merchant)}</b><small>${md(r.date)}</small></div><div class="r">${csvAmt(r.amount)}</div></div>`).join('')}${rows.length > MAX ? `<p class="hint">ほか${rows.length - MAX}件</p>` : ''}</div>
+        <button type="button" class="lnk" data-act="csv-map">列の割り当てを変更</button>
+        <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="card">戻る</button><button type="button" class="btn" data-act="csv-next">次へ</button></div>`;
+    } else if (csv.step === 'actions') {
+      const pm = CI.previewMerge(state, card.id, csv.month, csv.an.rows);
+      const cur = state.actuals[L.actualKey('card', card.id, csv.month)];
+      const sugg = csv.sugg = CI.suggestRecurring(state, card.id, csv.month, csv.an.rows);
+      const cmp = cmpInner('card', card.id, csv.month, pm.total);
+      const why = { history: '前の月にも同じくらいの金額', known: '定額サービスの名前に一致', both: '前の月にも同じくらいの金額・定額サービス' };
+      h = `<h2>登録する内容</h2>${csvSteps(3)}
+        <div class="csv-act"><label class="f chk"><input type="checkbox" id="caActual" ${pm.total >= 0 ? 'checked' : 'disabled'}> <span>合計 <b>${yenAbs(pm.total)}</b> を <b>${ymLabel(csv.month)}</b> の確定額にする</span></label>
+          <small>${esc(card.name)}の請求額として記録します（「実績」に手で入力するのと同じ）。${cur ? `今の確定額 ${yenAbs(cur.amount)} を置き換えます。` : ''}${pm.total < 0 ? '合計がマイナスのため確定額にできません。' : ''}</small>
+          ${cmp ? `<p class="cmp">${cmp}</p>` : ''}</div>
+        <h3 class="csv-h">毎月の支払いとして登録</h3>
+        ${sugg.length ? sugg.map((s, i) => `<div class="csv-act"><label class="f chk"><input type="checkbox" class="caSug" data-i="${i}" ${s.strong ? 'checked' : ''}> <span><b>${esc(s.name)}</b> ${yenAbs(s.amount)}／毎月</span></label><small>${esc(s.merchant)}・${why[s.reason]}</small></div>`).join('') + '<p class="hint">登録すると、支払いタブに「毎月」の支払い（このカード払い）として追加されます。名前や金額はあとから編集できます。</p>'
+          : '<p class="hint">候補はありません（前の月の明細を読み込むと、毎月出てくる支払いを見つけやすくなります）。</p>'}
+        <p class="hint">明細（${csv.an.rows.length}件）はこのカードの${ymLabel(csv.month)}分として保存します。同じファイルをもう一度読み込んでも二重にはなりません。</p>
+        <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="preview">戻る</button><button type="button" class="btn" data-act="csv-apply">読み込む</button></div>`;
+    }
+    dlg.innerHTML = `<div class="sheet csv">${h}</div>`;
+    const cs = $('#csvCard', dlg); if (cs) cs.addEventListener('change', () => { csv.cardId = cs.value; });
+    const ms = $('#csvMonth', dlg); if (ms) ms.addEventListener('change', () => { csv.month = ms.value; drawCsv(); });
+    ['mDate', 'mMer', 'mAmt'].forEach((k) => { const s = $('#' + k, dlg); if (s) s.addEventListener('change', () => { const mp = csv.an.map; mp[{ mDate: 'date', mMer: 'merchant', mAmt: 'amount' }[k]] = Number(s.value); mp.alt = -1; drawCsv(); }); });
+    const fi = $('#csvfile', dlg); if (fi) fi.addEventListener('change', () => { if (fi.files[0]) readCsvFile(fi.files[0]); fi.value = ''; });
+  }
+  const csvFail = (msg) => askConfirm({ title: '読み込めませんでした', message: msg, okLabel: 'OK', noCancel: true, danger: false });
+  async function readCsvFile(file) {
+    if (file.size > 5 * 1024 * 1024) return csvFail('ファイルが大きすぎます（5MBまで）。');
+    let buf;
+    try { buf = file.arrayBuffer ? await file.arrayBuffer() : await new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ng; r.readAsArrayBuffer(file); }); }
+    catch (e) { return csvFail('ファイルを開けませんでした。'); }
+    const dec = CI.decodeBytes(buf), an = CI.analyze(dec.text);
+    if (!an.table.length) return csvFail('CSVの中身が見つかりませんでした。カード会社の「利用明細」のCSVファイルか確認してください。');
+    Object.assign(csv, { file: file.name || 'CSV', encoding: dec.encoding, text: dec.text, an });
+    if (!an.ok) { csv.step = 'map'; if (an.map.date < 0) Object.assign(an.map, { date: 0, merchant: 1, amount: 2, header: -1, alt: -1 }); drawCsv(); return; }
+    csv.month = CI.guessBillMonth(csvCard(), an.rows, todayStr());
+    csv.step = 'preview'; drawCsv();
+  }
+  async function applyCsv() {
+    const card = csvCard(), dlg = $('#dlg'); if (!card || !csv.an) return;
+    const doActual = $('#caActual', dlg) && $('#caActual', dlg).checked;
+    const picks = Array.from(dlg.querySelectorAll('.caSug')).filter((x) => x.checked).map((x) => csv.sugg[Number(x.dataset.i)]);
+    const pm = CI.previewMerge(state, card.id, csv.month, csv.an.rows);
+    const cur = state.actuals[L.actualKey('card', card.id, csv.month)];
+    if (doActual && cur && Math.round(cur.amount) !== Math.round(pm.total)) {
+      const ok = await askConfirm({ title: '確定額を置き換えますか？', message: `${ymLabel(csv.month)}の確定額 ${yenAbs(cur.amount)} を、明細の合計 ${yenAbs(pm.total)} に置き換えます。`, okLabel: '置き換える', danger: false });
+      if (!ok) return;
+    }
+    const res = CI.mergeImport(state, card.id, csv.month, csv.an.rows);
+    if (doActual && res.total >= 0) L.setActual(state, 'card', card.id, csv.month, res.total);
+    const t = todayStr();
+    // 登録の直前にもう一度、登録済みと重ならないか確認（同じ候補を2回押した場合など）
+    const still = new Set(CI.suggestRecurring(state, card.id, csv.month, csv.an.rows).map((s) => s.key));
+    let nPay = 0;
+    for (const s of picks) if (still.has(s.key)) { state.payments.push(CI.paymentFromSuggestion(s, card, uid(), t)); nPay++; }
+    save(); csv = null; dlg.close(); render();
+    toast(['明細' + res.added + '件を保存' + (res.dup ? `（重複${res.dup}件は省略）` : ''), doActual && res.total >= 0 ? '確定額を記録' : '', nPay ? `支払い${nPay}件を登録` : ''].filter(Boolean).join('・'));
+  }
+
   /* ---------- サンプル・バックアップ ---------- */
   function addSample() {
     const t = todayStr(), base = L.monthKey(t);
@@ -850,7 +975,7 @@
       if (!v.ok) { askConfirm({ title: '読み込めませんでした', message: v.error, okLabel: 'OK', noCancel: true, danger: false }); return; }
       const c = v.counts, when = v.exportedAt ? new Date(v.exportedAt) : null;
       const whenTxt = when && !isNaN(when) ? `${when.getFullYear()}年${when.getMonth() + 1}月${when.getDate()}日に保存したバックアップ\n` : '';
-      askConfirm({ title: 'バックアップから復元', message: `${whenTxt}口座${c.accounts}・カード${c.cards}・支払い${c.payments}・収入${c.incomes}・実績${c.actuals}\n\n今のデータは上書きされます。${v.oldFormat ? '\n（古い形式のデータは自動で変換されます）' : ''}`, okLabel: '上書きして復元' })
+      askConfirm({ title: 'バックアップから復元', message: `${whenTxt}口座${c.accounts}・カード${c.cards}・支払い${c.payments}・収入${c.incomes}・実績${c.actuals}${c.imports ? '・明細' + c.imports + 'か月分' : ''}\n\n今のデータは上書きされます。${v.oldFormat ? '\n（古い形式のデータは自動で変換されます）' : ''}`, okLabel: '上書きして復元' })
         .then((ok) => { if (!ok) return; state = v.state; sel.target = null; sel.vm = null; save(); render(); toast('復元しました'); });
     };
     r.onerror = () => askConfirm({ title: '読み込めませんでした', message: 'ファイルを開けませんでした。', okLabel: 'OK', noCancel: true, danger: false });
@@ -911,6 +1036,13 @@
       case 'enter': openEnter(t.dataset.kind, id, t.dataset.month); break;
       case 'actuals': openActuals(t.dataset.kind, id); break;
       case 'close-dlg': $('#dlg').close(); break;
+      case 'csv-open': openCsv(id); break;
+      case 'csv-pick': { const fi = $('#csvfile'); if (fi) fi.click(); break; }
+      case 'csv-back': if (csv) { csv.step = t.dataset.to; drawCsv(); } break;
+      case 'csv-map': if (csv) { csv.step = 'map'; drawCsv(); } break;
+      case 'csv-map-ok': if (csv) { const mp = csv.an.map; csv.an = CsvImport.analyze(csv.text, { header: mp.header, date: mp.date, merchant: mp.merchant, amount: mp.amount, alt: mp.alt }); csv.an.map.headers = mp.headers; csv.month = CsvImport.guessBillMonth(csvCard(), csv.an.rows, todayStr()); csv.step = 'preview'; drawCsv(); } break;
+      case 'csv-next': if (csv) { csv.step = 'actions'; drawCsv(); } break;
+      case 'csv-apply': if (csv) applyCsv(); break;
       case 'act-add': {
         const m = $('#am').value, v = Number($('#aa').value);
         if (!m) { toast('月を選んでください'); break; }
@@ -944,7 +1076,7 @@
     const row = e.target.closest && e.target.closest('.inb-row'); if (!row) return;
     const box = $('.cmp', row); if (box) box.innerHTML = cmpInner(row.dataset.kind, row.dataset.id, row.dataset.month, e.target.value);
   });
-  $('#dlg').addEventListener('close', () => { actCtx = null; render(); });
+  $('#dlg').addEventListener('close', () => { actCtx = null; csv = null; render(); });
   // 日付が変わった／しばらく閉じていたあとに開き直したら、指定日を今日に戻す
   let hiddenAt = 0, lastDay = todayStr();
   document.addEventListener('visibilitychange', () => {

@@ -24,7 +24,8 @@ iPhoneで使うには、アプリのファイル一式を **HTTPSで配信でき
 ## テスト
 ```
 node test/logic.test.js      # 62件（日付計算・月末補正・直近3回平均・確定/仮・通知日時・マイナス警告・次の引き落とし・比較・バックアップ検証 ほか）
-node test/e2e-v57.js         # E2E（要 python3 -m http.server 8765 と puppeteer-core）。ほかに e2e-chart / dayselect / delete / repeat
+node test/csvimport.test.js  # 24件（明細CSV: 文字コード・CSV・列の判定・日付/金額・請求月・毎月の候補・二重取り込みなし）
+node test/e2e-v58.js         # E2E（要 python3 -m http.server 8765 と puppeteer-core）。ほかに e2e-v57 / chart / dayselect / delete / repeat
 ```
 計算は DOM に依存しない `logic.js` に分離（ブラウザ/Node 共用）。
 
@@ -97,3 +98,12 @@ JSONの `version: 2`（`accounts, cards, payments, incomes, actuals, settings`�
 - 設定のいちばん上に「バックアップ」。保存は共有シート（「ファイル」に保存・AirDrop）、非対応ならダウンロード。ファイル名 `money-backup-YYYYMMDD.json`。「最終バックアップ 11/2」を表示し、未保存または30日超ならやさしくおすすめ。復元はファイルを検証してから「今のデータは上書きされます」を確認。最終バックアップ日は別キー `money-app-last-backup`。
 - ロジック：`firstNegativeWithin` / `nextDebit` / `previousActual` / `compareAmounts` / `validateBackup` / `backupFileName` / `backupStatus`。
 - キャッシュ名 `money-app-v57`。スクショ：`screenshots/v57-*.png`。
+
+## v5.8（カードの明細CSVの読み込み）
+- 支払いタブの「明細CSVを読み込む」、またはカードの編集画面の「このカードの明細CSVを読み込む」から。①カードとファイル → ②中身の確認（件数・合計・請求月の推定。変更可）→ ③登録する内容（チェックで選ぶ）。
+- ③の内容：「合計 ¥X を Y月の確定額にする」（先月との比較つき。既に違う確定額があれば置き換えの確認）／「毎月の支払いとして登録」の候補（同じカードの前の月の明細に同じ店・近い金額があるもの、またはよくある定額サービスの名前。登録済みと似た名前は出さない。チェックは強い候補だけ）。
+- 文字コードは UTF-8（BOM可）→ ダメなら Shift_JIS。引用符・引用符内のカンマ・CRLF、前置きの行・会員情報の行・合計の行を読み飛ばす。見出しが無い形式は中身から列を推定。判定できなければ列の割り当て画面（1件目のプレビューつき）。
+- 見出しの例：日付＝利用日／ご利用日／ご利用年月日／日付、店名＝利用店名・商品名／ご利用先など／ご利用場所／内容／摘要、金額＝（M月）支払金額／お支払い金額／今回ご請求額／利用金額／金額（手数料・支払総額・残高・回数の列は使わない）。日付は YYYY/MM/DD・YYYY-MM-DD・YY/MM/DD・YYYY年M月D日・全角数字。金額は ¥・円・カンマ・全角・マイナス（-・△・▲・(…)）。
+- 明細は `state.imports[cardId][請求月] = { at, rows: [[日付, 店名, 金額]] }` に保存。同じ明細を何度読み込んでも増えない（同じ日・店・金額の行は件数の多い方に合わせる）。バックアップ・復元の検証に含む。集計タブのカードの行に「明細（CSV）の店別」。
+- ロジック：`csvimport.js`（DOM非依存・Node でテスト）。テスト用の明細は `test/fixtures/` の架空データ。
+- キャッシュ名 `money-app-v58`。スクショ：`screenshots/v58-*.png`。

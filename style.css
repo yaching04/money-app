@@ -362,3 +362,27 @@ dialog.cdlg{max-height:90vh;max-height:90dvh}
 /* バックアップ */
 .bk-last{margin:0 0 4px;font-size:16px}
 .bk-remind{margin:0 0 8px;font-size:13px;color:var(--amb)}
+/* ---- v5.8 明細CSVの読み込み ---- */
+.pagebar .csv-btn{margin-left:auto;white-space:nowrap;flex:none}
+.csv-step{display:flex;align-items:center;gap:8px;margin:0 0 16px;font-size:13px;color:var(--sub)}
+.csv-step span{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px}
+.csv-step span.on{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:700}
+.csv-step b{color:var(--ink);font-weight:700;margin-left:8px}
+.csv-sum{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:0 0 16px;text-align:center}
+.csv-sum small{display:block;font-size:13px;color:var(--sub)}
+.csv-sum b{display:block;font-size:36px;font-weight:800;line-height:1.2;margin:8px 0}
+.csv-rows{border-top:1px solid var(--line);margin:0 0 8px}
+.csv-rows .row,.csv-prev .row{min-height:40px;padding:8px 0}
+.csv-prev{border:1px solid var(--line);border-radius:var(--r);padding:8px 16px;margin:0 0 16px}
+.csv-prev>small{display:block;font-size:13px;color:var(--sub);margin:8px 0}
+.csv-act{border-bottom:1px solid var(--line);padding:8px 0}
+.csv-act .f.chk{margin:0}
+.csv-act .f.chk label,.csv-act label.f.chk{display:flex;align-items:flex-start;gap:8px;font-size:16px;margin:0}
+.csv-act input[type=checkbox]{width:24px;height:24px;flex:none;margin:0;accent-color:var(--pri)}
+.csv-act small{display:block;font-size:13px;color:var(--sub);margin:8px 0 0 32px}
+.csv-act .cmp{margin:8px 0 0 32px}
+.csv-h{font-size:16px;margin:24px 0 8px}
+.csv .lnk{background:none;border:0;padding:8px 0;color:var(--pri);font-size:13px;font-family:inherit;text-decoration:underline;cursor:pointer}
+.csv-help{margin:16px 0 8px}
+.csv-help ol{margin:8px 0 0;padding-left:24px;font-size:13px;color:var(--sub)}
+.csv-help li{margin:0 0 8px}

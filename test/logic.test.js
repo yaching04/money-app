@@ -639,7 +639,7 @@ t('previousActual: 毎年の支払いは「前回」', () => {
 t('validateBackup: 正常・壊れたファイル・別アプリ・新しすぎる版', () => {
   const ok = L.validateBackup(Object.assign({ app: 'money-app', exportedAt: '2025-01-15T00:00:00Z', version: 2 }, base()));
   assert.strictEqual(ok.ok, true);
-  assert.deepStrictEqual(ok.counts, { accounts: 1, cards: 1, payments: 4, incomes: 1, actuals: 0 });
+  assert.deepStrictEqual(ok.counts, { accounts: 1, cards: 1, payments: 4, incomes: 1, actuals: 0, imports: 0 });
   assert.strictEqual(ok.state.app, undefined); assert.strictEqual(ok.state.version, L.SCHEMA_VERSION);
   assert.strictEqual(ok.exportedAt, '2025-01-15T00:00:00Z');
   assert.strictEqual(L.validateBackup(JSON.stringify(base())).ok, true);   // 文字列もOK・旧形式（app無し）もOK
