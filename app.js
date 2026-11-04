@@ -54,6 +54,25 @@
   const badge = (e) => (e.confirmed ? '<span class="tag ok">確定額</span>' : '<span class="tag prov">仮</span>');
   const srcText = (e) => e.source === 'actual' ? '実績' : e.source === 'average' ? '直近' + e.n + '回の実績平均' : e.source === 'initial' ? '初期見込み額（実績なし）' : '';
 
+  /* v5.7: 実績入力の下に「先月 ¥37,000（+¥8,000）」。毎年・◯か月ごと・間が空いたときは「前回（5月）」。30%以上の変化は控えめに強調 */
+  function cmpInner(kind, id, month, val) {
+    const pa = L.previousActual(state, kind, id, month);
+    if (!pa) return '';
+    const it = itemOf(kind, id), rt = it && kind !== 'card' ? L.repType(it) : 'monthly';
+    const label = pa.label === '先月' && rt === 'monthly' ? '先月' : '前回（' + (pa.month.slice(0, 4) === month.slice(0, 4) ? '' : pa.month.slice(0, 4) + '年') + Number(pa.month.slice(5)) + '月）';
+    let t = `${label} ${yenAbs(pa.amount)}`, big = false;
+    if (val !== '' && val != null && isFinite(Number(val))) {
+      const c = L.compareAmounts(pa.amount, Number(val));
+      t += `（${c.diff > 0 ? '+' : c.diff < 0 ? '−' : '±'}${yenAbs(c.diff)}）`; big = c.big;
+    }
+    return `<span class="${big ? 'cmp-big' : ''}">${t}${big ? '・大きく変わっています' : ''}</span>`;
+  }
+  // 入力欄に比較表示をつなぐ（box: 表示先, get: {kind,id,month}）
+  function bindCmp(inp, box, get) {
+    const up = () => { const g = get(); box.innerHTML = g ? cmpInner(g.kind, g.id, g.month, inp.value) : ''; box.hidden = !box.innerHTML; };
+    inp.addEventListener('input', up); up(); return up;
+  }
+
   /* ---------- 共通パーツ: 予定の1行 ---------- */
   function eventRow(e, o) {
     o = o || {};
@@ -175,16 +194,27 @@
   function homeRow(e) {
     const p = L.parse(e.date);
     const tap = e.variable ? `data-act="enter" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}"` : '';
-    return `<div class="hrow ${e.confirmed ? '' : 'prov'} ${e.variable ? 'tap' : ''}" ${tap}>
+    return `<div class="hrow ${e.confirmed ? '' : 'prov'} ${e.variable ? 'tap' : ''}" data-date="${e.date}" data-ref="${e.refKind}:${e.refId}" ${e.negative ? 'data-neg="1"' : ''} ${tap}>
       <div class="d">${p.m}/${p.d}<small>${dow(e.date)}</small></div>
       <div class="m"><b>${esc(e.label)}</b>${e.negative ? `<small class="neg-t">この後の残高 ${yen(e.balance)} ⚠</small>` : ''}</div>
       <div class="a">${sgn(e.delta, e.amount, e.confirmed)}</div></div>`;
+  }
+  /* v5.7: 大きな残高のすぐ下の1行。ふだんは「次の引き落とし」、マイナスになる見込みがあれば同じ場所が警告に変わる。タップでその日を選んで内訳の行へ */
+  function statusLine(target, scope) {
+    const today = todayStr(), lim = L.addDays(today, 60);
+    const neg = L.firstNegativeWithin(state, scope, today, target > lim ? target : lim);
+    if (neg) {
+      return `<button class="status warnst" data-act="jump" data-date="${neg.date}" data-neg="1" aria-label="マイナスになる日を見る"><span class="st-t"><span class="st-ic" aria-hidden="true">⚠</span>${neg.provisional ? PV + ' ' : ''}${md(neg.date)}に${neg.accountName ? esc(neg.accountName) + 'が' : '残高が'} <b>${yen(neg.balance)}</b> になる見込み</span><span class="st-c">›</span></button>`;
+    }
+    const nx = L.nextDebit(state, scope, today);
+    if (!nx) return '';
+    const after = L.project(state, nx.date, scope).endBalance;
+    return `<button class="status nextst" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-t"><span class="st-k">次の引き落とし</span> <b>${md(nx.date)}</b> <span class="st-n">${esc(nx.top.label)}</span>${nx.others ? ` <span class="st-o">ほか${nx.others}件</span>` : ''}</span><span class="st-a">${nx.top.confirmed ? '' : PV + ' '}${'−' + yenAbs(nx.top.amount)} <span class="st-r">→ 残り ${yen(after)}</span></span></button>`;
   }
   /* ヒーロー（大きな残高・日付・クイック選択）。ドラッグ中はここだけ作り直す */
   function heroHtml(target) {
     const today = todayStr(), scope = getScope();
     const pr = L.project(state, target, scope);
-    const multi = scope === 'all' && state.accounts.length > 1;
     const prov = pr.confirmedThrough !== null && !pr.beforeAsOf;
     const pending = L.computePending(state, today);
     const scopeName = scope === 'all' ? '口座合計' : esc(byId(state.accounts, scope).name);
@@ -194,10 +224,7 @@
         <button class="q" data-act="toggle-help" aria-label="説明を表示" aria-expanded="${ui.help}">？</button></div>
       <div class="big"><span>${yen(pr.endBalance)}</span><span class="hero-tag">${prov ? '仮' : '確定額'}</span></div>
       <div class="small">${ymd(target)} 時点・${scopeName}</div>`;
-    if (pr.negative) {
-      const f = pr.firstNegative;
-      h += `<div class="warn hero-in">⚠ 残高がマイナスになります${f ? '：' + md(f.date) + ' ' + esc(f.label) + ' の後（' + yen(f.balance) + (multi ? '／' + esc(f.accountName) + ' ' + yen(f.accountBalance) : '') + '）' : '（現在マイナスの口座があります）'}${f && f.uncertain ? '<br><small>※ 仮の金額を含む予測です</small>' : ''}</div>`;
-    }
+    h += statusLine(target, scope);
     h += `<div class="chips"><button class="chip" data-act="quick" data-m="-1">今日</button><button class="chip" data-act="quick" data-m="0">今月末</button><button class="chip" data-act="quick" data-m="1">来月末</button><button class="chip" data-act="quick" data-m="3">3か月後</button></div>`;
     if (ui.help) {
       const rem = pending.length ? null : L.computeReminders(state, today, 30)[0];
@@ -242,7 +269,7 @@
             : `<span class="pst wait">${md(e.date)}の${w}までに入力</span>`;
           return `<div class="inb-row ${e.status === 'overdue' ? 'over' : 'wait'}" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}">
           <div class="l">${st}<b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${w}日 ${md(e.date)}・請求額がわかる日 ${md(e.fixDate)}</small><small>仮 ${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
-          <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div></div>`;
+          <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div>${(() => { const c = cmpInner(e.refKind, e.refId, e.month, ''); return c ? `<p class="cmp">${c}</p>` : ''; })()}</div>`;
         }).join('');
         h += `</div>`;
       }
@@ -397,22 +424,29 @@
     const perm = N ? N.permission() : 'unsupported';
     const permTxt = { granted: '許可済み', denied: '拒否されています（端末の設定から変更）', default: '未設定', unsupported: 'このブラウザは非対応' }[perm];
     const ios = N && N.isIOS(), sa = N && N.isStandalone();
-    return `<div class="card"><h2>🔔 金額を入力する日の通知（朝8:00）</h2>
+    return `${backupCard()}<div class="card"><h2>🔔 金額を入力する日の通知（朝8:00）</h2>
       <p class="hint">状態：<b>${permTxt}</b>${lastNotify && perm === 'granted' ? '（予約 ' + lastNotify.scheduled + '件・' + ({ trigger: '端末予約', timer: 'アプリ起動中のタイマー', none: '予定なし' }[lastNotify.mode]) + '）' : ''}</p>
       ${ios && !sa ? '<div class="info">iPhoneでは、Safariの共有ボタン →「ホーム画面に追加」で追加したアプリから開いて許可してください（iOS 16.4以降）。</div>' : ''}
       <button class="btn" data-act="notif-request" ${perm === 'unsupported' || perm === 'denied' ? 'disabled' : ''}>通知を許可する</button>
       <button class="btn sec" data-act="notif-test" ${perm !== 'granted' ? 'disabled' : ''}>テスト通知を送る</button>
       <div class="info" style="margin-top:8px"><b>正直な注意：</b>今のアプリはサーバーを持たないため、<b>iPhoneでアプリを閉じている間は朝8:00に通知が届きません。</b>アプリを開いたときに「入力待ち」がホームに出て、8時以降なら通知も1日1回出ます。確実に朝8:00に届けるには、小さなサーバー（Web Push）が必要で、<b>未実装</b>です（受け口のコードは用意済み）。</div></div>
-      <div class="card"><h2>バックアップ</h2>
-      <p class="hint">データはこの端末のブラウザ内にだけ保存されています。機種変更やブラウザのデータ削除に備えて、ときどき保存してください。古い形式（v1）のバックアップも読み込めます。</p>
-      <button class="btn" data-act="export">⬇ JSONバックアップを保存</button>
-      <button class="btn sec" data-act="import">⬆ バックアップから復元（現在のデータは置き換え）</button>
-      <input type="file" id="file" accept="application/json,.json" hidden></div>
       <div class="card"><h2>サンプルデータ</h2>
       <button class="btn sec" data-act="sample">サンプルデータを追加</button>
       ${hasSample ? '<button class="btn danger" data-act="del-sample">サンプルデータだけ全て削除</button>' : ''}</div>
       <div class="card"><h2>全データ削除</h2><button class="btn danger" data-act="reset">すべて削除して初期状態に戻す</button></div>
       <p class="note" style="text-align:center">データ形式 v${L.SCHEMA_VERSION}・口座${state.accounts.length}・カード${state.cards.length}・支払い${state.payments.length}・収入${state.incomes.length}・実績${Object.keys(state.actuals).length}</p>`;
+  }
+
+  function backupCard() {
+    const last = lastBackup(), bs = L.backupStatus(last, todayStr());
+    const when = last ? `最終バックアップ <b>${md(last.slice(0, 10))}</b>${bs.days === 0 ? '（今日）' : `（${bs.days}日前）`}` : 'まだバックアップしていません';
+    return `<div class="card" id="backup"><h2>バックアップ</h2>
+      <p class="bk-last">${when}</p>
+      ${bs.remind && state.accounts.length ? `<p class="bk-remind">${last ? '30日以上たっています。' : ''}機種変更やブラウザのデータ削除に備えて、ときどき保存しておくと安心です。</p>` : ''}
+      <p class="hint">データはこの端末の中だけに保存されています。保存したファイルは「ファイル」アプリやAirDropで残せます。</p>
+      <button class="btn" data-act="export">バックアップを保存</button>
+      <button class="btn sec" data-act="import">バックアップから復元</button>
+      <input type="file" id="file" accept="application/json,.json" hidden></div>`;
   }
 
   /* ---------- 描画 ---------- */
@@ -720,10 +754,11 @@
       title: '実績（確定額）を入力',
       saveLabel: '金額を確定する', deleteLabel: '実績を取り消す', doneMsg: '確定額を保存しました',
       body: `<p class="hint"><b>${esc(label)}</b>${e ? '<br>' + (e.kind === 'income' ? '入金日 ' : '引き落とし日 ') + md(e.date) + '・請求額がわかる日 ' + md(e.fixDate) : ''}<br>現在: ${e ? (e.confirmed ? '' : '仮 ') + yenAbs(e.amount) + '（' + srcText(e) + '）' : '-'}</p>` +
-        field('amount', ymLabel(month) + '分の確定金額（円）', `<input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${e && e.confirmed ? e.amount : ''}" placeholder="${cur}" autofocus>`, '入力すると仮の金額が実績に置き換わり、今後の平均（直近3回）にも使われます。'),
+        field('amount', ymLabel(month) + '分の確定金額（円）', `<input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${e && e.confirmed ? e.amount : ''}" placeholder="${cur}" autofocus><p class="cmp" id="cmp" hidden></p>`, '入力すると仮の金額が実績に置き換わり、今後の平均（直近3回）にも使われます。'),
       onSubmit(fd) { const v = num(fd, 'amount'); if (!isFinite(v) || v < 0) return '金額を入力してください'; L.setActual(state, kind, id, month, v); },
       delMsg: '入力した確定額を取り消して、仮の金額に戻します。',
       onDelete: e && e.source === 'actual' ? () => { L.removeActual(state, kind, id, month); } : null,
+      setup(f) { bindCmp($('#amount', f), $('#cmp', f), () => ({ kind, id, month })); },
     });
   }
   /** 実績の履歴と追加（過去分のまとめ入力もここで） */
@@ -743,11 +778,13 @@
     dlg.innerHTML = `<div class="sheet"><h2>実績の記録：${esc(it.name)}</h2>
       <p class="hint">${nextProv ? `次回の仮の金額：<b>仮 ${yenAbs(nextProv.amount)}</b>（${md(nextProv.date)}・${esc(srcText(nextProv))}）` : '次回の予定はありません'}<br>仮の金額＝直近(最大)3回の実績の平均。実績が無いうちは初期見込み額（${yenAbs(initialOf(kind, it))}）です。</p>
       <div class="f"><label>月（引き落とし${kind === 'inc' ? '（入金）' : ''}日が属する月）</label><input type="month" id="am" value="${defMonth}"></div>
-      <div class="f"><label>確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="例：6200"></div>
+      <div class="f"><label>確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="例：6200"><p class="cmp" id="acmp" hidden></p></div>
       <button class="btn" data-act="act-add">この月の実績を保存</button>
       <h3 style="margin:16px 0 8px;font-size:16px;color:var(--sub)">これまでの実績（新しい順）</h3>
       ${hist.length ? hist.map((x, i) => `<div class="row"><div class="l"><b>${ymLabel(x.month)}</b>${i < 3 ? '<small>平均の対象（直近3件）</small>' : ''}</div><div class="r">${yenAbs(x.amount)}</div><button class="btn sm danger" data-act="act-del" data-month="${x.month}">削除</button></div>`).join('') : '<div class="empty">まだ実績がありません</div>'}
       <button class="btn sec" data-act="close-dlg" style="margin-top:12px">閉じる</button></div>`;
+    const up = bindCmp($('#aa', dlg), $('#acmp', dlg), () => ($('#am', dlg).value ? { kind, id, month: $('#am', dlg).value } : null));
+    $('#am', dlg).addEventListener('change', up);
   }
 
   /* ---------- サンプル・バックアップ ---------- */
@@ -787,24 +824,50 @@
     if (!(await askConfirm({ title: '最後の確認', message: '本当にすべて削除しますか？この操作は元に戻せません。', okLabel: 'すべて削除する' }))) return;
     state = L.migrate(null); save(); render(); toast('すべて削除しました');
   }
-  function exportJson() {
-    const blob = new Blob([JSON.stringify(Object.assign({ exportedAt: new Date().toISOString(), app: 'money-app' }, state), null, 2)], { type: 'application/json' });
+  const LASTBK_KEY = 'money-app-last-backup';   // 復元でデータを置き換えても消えないよう、別のキーに保存
+  const lastBackup = () => { try { return localStorage.getItem(LASTBK_KEY); } catch (_) { return null; } };
+  const markBackup = () => { try { localStorage.setItem(LASTBK_KEY, new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 19)); } catch (_) {} };
+  const backupJson = () => JSON.stringify(Object.assign({ app: 'money-app', exportedAt: new Date().toISOString() }, state), null, 2);
+  // iPhone: 共有シート（「ファイル」に保存・AirDrop など）／非対応ならダウンロード
+  async function exportJson() {
+    const name = L.backupFileName(todayStr()), json = backupJson();
+    let file = null;
+    try { file = new File([json], name, { type: 'application/json' }); } catch (_) {}
+    if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); markBackup(); render(); toast('バックアップを保存しました'); return; }
+      catch (e) { if (e && e.name === 'AbortError') { toast('キャンセルしました'); return; } /* 共有できなければダウンロードへ */ }
+    }
+    const blob = new Blob([json], { type: 'application/json' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'money-backup-' + todayStr().replace(/-/g, '') + '.json';
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('バックアップを保存しました');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    markBackup(); render(); toast('バックアップを保存しました');
   }
   function importJson(file) {
     const r = new FileReader();
     r.onload = () => {
-      try {
-        const o = JSON.parse(r.result);
-        if (!o || typeof o !== 'object' || !['accounts', 'cards', 'payments', 'incomes'].every((k) => Array.isArray(o[k]))) throw new Error('形式が違います');
-        const n = L.migrate(o);
-        askConfirm({ title: 'バックアップから復元', message: `口座${n.accounts.length}・カード${n.cards.length}・支払い${n.payments.length}・収入${n.incomes.length}・実績${Object.keys(n.actuals).length} を読み込み、現在のデータをすべて置き換えます。${(Number(o.version) || 1) < 2 ? '\n（旧形式v1のデータはv2へ自動変換されます）' : ''}`, okLabel: '置き換える' }).then((ok) => { if (ok) { state = n; save(); render(); toast('復元しました'); } });
-      } catch (e) { askConfirm({ title: '読み込めませんでした', message: e.message, okLabel: 'OK', noCancel: true, danger: false }); }
+      const v = L.validateBackup(String(r.result || ''));
+      if (!v.ok) { askConfirm({ title: '読み込めませんでした', message: v.error, okLabel: 'OK', noCancel: true, danger: false }); return; }
+      const c = v.counts, when = v.exportedAt ? new Date(v.exportedAt) : null;
+      const whenTxt = when && !isNaN(when) ? `${when.getFullYear()}年${when.getMonth() + 1}月${when.getDate()}日に保存したバックアップ\n` : '';
+      askConfirm({ title: 'バックアップから復元', message: `${whenTxt}口座${c.accounts}・カード${c.cards}・支払い${c.payments}・収入${c.incomes}・実績${c.actuals}\n\n今のデータは上書きされます。${v.oldFormat ? '\n（古い形式のデータは自動で変換されます）' : ''}`, okLabel: '上書きして復元' })
+        .then((ok) => { if (!ok) return; state = v.state; sel.target = null; sel.vm = null; save(); render(); toast('復元しました'); });
     };
+    r.onerror = () => askConfirm({ title: '読み込めませんでした', message: 'ファイルを開けませんでした。', okLabel: 'OK', noCancel: true, danger: false });
     r.readAsText(file);
+  }
+
+  // その日を選び、内訳の該当行までスクロールして少し光らせる（5件より後なら「すべて見る」を開く）
+  function jumpTo(d, ref, neg) {
+    if (!d) return;
+    sel.target = d; sel.vm = L.monthKey(d); render();
+    const find = () => (ref && $(`.hrow[data-date="${d}"][data-ref="${ref}"]`)) || (neg && $(`.hrow[data-date="${d}"][data-neg]`)) || $(`.hrow[data-date="${d}"]`);
+    let row = find();
+    if (!row && !ui.all && $('[data-act=toggle-all]')) { ui.all = true; render(); row = find(); }
+    if (!row) row = $('.hrow.base');
+    if (!row) return;
+    if (row.scrollIntoView) row.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1600);
   }
 
   /* ---------- イベント ---------- */
@@ -835,6 +898,7 @@
         sel.target = m < 0 ? todayStr() : L.addMonthsEnd(todayStr(), m);
         sel.vm = L.monthKey(sel.target); render(); break;
       }
+      case 'jump': jumpTo(t.dataset.date, t.dataset.ref, t.dataset.neg === '1'); break;
       case 'toggle-inbox': ui.inbox = !ui.inbox; render(); break;
       case 'toggle-help': ui.help = !ui.help; render(); break;
       case 'toggle-payhelp': ui.payHelp = !ui.payHelp; if (!ui.payHelp) { try { localStorage.setItem(PAYHELP_KEY, '1'); } catch (_) {} } render(); break;
@@ -874,6 +938,11 @@
     else if (t.id === 'pacc') { state.settings.projAccount = t.value; save(); render(); }
     else if (t.dataset && t.dataset.act === 'toggle-pay') { const p = byId(state.payments, t.dataset.id); if (p) { p.active = t.checked; save(); render(); } }
     else if (t.id === 'file' && t.files[0]) { importJson(t.files[0]); t.value = ''; }
+  });
+  // 入力待ちの行：入力に合わせて先月との比較を更新
+  document.addEventListener('input', (e) => {
+    const row = e.target.closest && e.target.closest('.inb-row'); if (!row) return;
+    const box = $('.cmp', row); if (box) box.innerHTML = cmpInner(row.dataset.kind, row.dataset.id, row.dataset.month, e.target.value);
   });
   $('#dlg').addEventListener('close', () => { actCtx = null; render(); });
   // 日付が変わった／しばらく閉じていたあとに開き直したら、指定日を今日に戻す

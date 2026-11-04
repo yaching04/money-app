@@ -365,6 +365,91 @@
       body: byDate[k].names.join('、') + ' の請求額がわかる日です。金額を入力すると残高予測が正確になります。' }));
   }
 
+  /* ---------- v5.7 ホームの1行表示（マイナス警告・次の支払い）と比較・バックアップ ---------- */
+  /**
+   * 残高がマイナスになる最初の日（todayStr 〜 toIn）。scope: 'all' or 口座ID。
+   * 'all' のときは合計か、いずれかの口座がマイナスになった最初の時点。
+   * 戻り値 { date, balance, provisional, accountName(口座単位のときのみ), total } / 無ければ null
+   */
+  function firstNegativeWithin(state, scope, todayStr, toIn) {
+    const pr = project(state, toIn, scope);
+    if (pr.noAccounts || pr.beforeAsOf) return null;
+    const accs = scope && scope !== 'all' ? state.accounts.filter((a) => a.id === scope) : state.accounts;
+    const multi = accs.length > 1;
+    // 基準日時点ですでにマイナス
+    const negAcc = accs.find((a) => Number(a.balance || 0) < 0);
+    if (pr.startBalance < 0 || negAcc) {
+      const totalNeg = pr.startBalance < 0;
+      return { date: todayStr, balance: totalNeg ? pr.startBalance : Number(negAcc.balance), provisional: false, accountName: !totalNeg && multi ? negAcc.name : null, total: pr.startBalance };
+    }
+    for (const r of pr.events) {
+      if (!r.negative) continue;
+      if (r.date > toIn) break;
+      const totalNeg = r.balance < 0;
+      return { date: r.date < todayStr ? todayStr : r.date, balance: totalNeg ? r.balance : r.accountBalance, provisional: !!r.uncertain, accountName: !totalNeg && multi ? r.accountName : null, total: r.balance, label: r.label };
+    }
+    return null;
+  }
+
+  /**
+   * 次の支払い（引き落とし）日と、その日のいちばん大きい支払い。
+   * todayStr 以降で、口座の基準日（残高の日付）より後のもの（＝まだ残高に反映されていない）。
+   * 戻り値 { date, top(イベント), others(同じ日の他の件数), total, provisional(その日に仮を含む) } / 無ければ null
+   */
+  function nextDebit(state, scope, todayStr, days) {
+    const lim = addDays(todayStr, days == null ? 62 : days);
+    const asOf = {}; for (const a of state.accounts) asOf[a.id] = a.asOf || todayStr;
+    const evs = genEvents(state, addDays(todayStr, -1), lim).filter((e) => e.delta < 0 && e.amount > 0
+      && (!scope || scope === 'all' || e.accountId === scope) && asOf[e.accountId] !== undefined && e.date > asOf[e.accountId]);
+    if (!evs.length) return null;
+    const date = evs[0].date, same = evs.filter((e) => e.date === date);
+    const top = same.slice().sort((a, b) => b.amount - a.amount)[0];
+    return { date, top, others: same.length - 1, total: same.reduce((s, e) => s + e.amount, 0), provisional: same.some((e) => !e.confirmed), events: same };
+  }
+
+  /** 前回の実績（month より前の最新）。label: 直前の月なら「先月」、それ以外（毎年・◯か月ごと・間が空いた）は「前回」 */
+  function previousActual(state, refKind, id, month) {
+    const h = history(state, refKind, id).filter((x) => x.month < month);
+    if (!h.length) return null;
+    const last = h[h.length - 1];
+    return { month: last.month, amount: last.amount, label: last.month === addMonthKey(month, -1) ? '先月' : '前回' };
+  }
+  /** 今回の金額と前回の比較。big: 30%以上の変化（前回0円で今回>0 も） */
+  function compareAmounts(prev, cur, threshold) {
+    threshold = threshold == null ? 0.3 : threshold;
+    prev = Number(prev); cur = Number(cur);
+    if (!isFinite(prev) || !isFinite(cur)) return null;
+    const diff = Math.round(cur - prev);
+    const ratio = prev ? diff / Math.abs(prev) : (diff ? Infinity : 0);
+    return { diff, ratio, big: Math.abs(ratio) >= threshold };
+  }
+
+  /** バックアップファイルの検証。OK なら { ok:true, state(移行済み), counts, exportedAt } / NG なら { ok:false, error } */
+  function validateBackup(o) {
+    if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { return { ok: false, error: 'JSONファイルとして読み込めませんでした。' }; } }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return { ok: false, error: 'このアプリのバックアップではないようです。' };
+    if (o.app && o.app !== 'money-app') return { ok: false, error: '別のアプリのファイルです。' };
+    const keys = ['accounts', 'cards', 'payments', 'incomes'];
+    if (!Array.isArray(o.accounts)) return { ok: false, error: 'このアプリのバックアップではないようです（口座のデータがありません）。' };
+    if (keys.some((k) => o[k] != null && !Array.isArray(o[k]))) return { ok: false, error: 'データの一部が壊れています。' };
+    if (o.actuals != null && (typeof o.actuals !== 'object' || Array.isArray(o.actuals))) return { ok: false, error: '実績のデータが壊れています。' };
+    for (const k of keys) for (const x of (o[k] || [])) if (!x || typeof x !== 'object' || !x.id) return { ok: false, error: 'データの一部が壊れています（IDのない項目があります）。' };
+    for (const a of o.accounts) if (!isFinite(Number(a.balance))) return { ok: false, error: '口座の残高が数字ではありません。' };
+    if (Number(o.version) > SCHEMA_VERSION) return { ok: false, error: '新しいバージョンのアプリで作られたバックアップです。アプリを更新してから読み込んでください。' };
+    const st = migrate(o);
+    delete st.exportedAt; delete st.app;
+    return { ok: true, state: st, exportedAt: typeof o.exportedAt === 'string' ? o.exportedAt : null, oldFormat: (Number(o.version) || 1) < SCHEMA_VERSION,
+      counts: { accounts: st.accounts.length, cards: st.cards.length, payments: st.payments.length, incomes: st.incomes.length, actuals: Object.keys(st.actuals).length } };
+  }
+  /** バックアップのファイル名 money-backup-YYYYMMDD.json */
+  const backupFileName = (todayStr) => 'money-backup-' + todayStr.replace(/-/g, '') + '.json';
+  /** 最後のバックアップから何日か（未保存は null）と、おすすめ表示（30日超 or 未保存） */
+  function backupStatus(lastDate, todayStr) {
+    if (!lastDate || !/^\d{4}-\d{2}-\d{2}/.test(lastDate)) return { days: null, remind: true };
+    const d = dayNum(todayStr) - dayNum(lastDate.slice(0, 10));
+    return { days: d, remind: d > 30 };
+  }
+
   /* ---------- データ形式の移行 ---------- */
   /** v1 / v2 / 不完全なデータを v2 形式に整える（元のオブジェクトは変更しない） */
   function migrate(o) {
@@ -387,5 +472,6 @@
   return { SCHEMA_VERSION, END_DAY, isEndDay, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
     repType, occursIn, itemDates, nextOccurrence, repeatLabel, loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
-    computePending, computeReminders, migrate };
+    computePending, computeReminders, migrate,
+    firstNegativeWithin, nextDebit, previousActual, compareAmounts, validateBackup, backupFileName, backupStatus };
 });

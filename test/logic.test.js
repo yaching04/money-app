@@ -557,4 +557,108 @@ t('v5.5 収入も繰り返し（賞与 6・12月 = 6か月ごと）', () => {
   assert.deepStrictEqual(L.genEvents(s, '2025-12-31', '2027-12-31').map((e) => e.date), ['2026-06-10', '2026-12-10', '2027-06-10', '2027-12-10']);
   assert.strictEqual(L.project(s, '2026-12-31', 'all').endBalance, 1800000);
 });
+
+/* ---------- v5.7 ---------- */
+t('firstNegativeWithin: 合計が最初にマイナスになる日と金額（期間外は無視）', () => {
+  const s = base(); s.accounts[0].balance = 20000; s.incomes = [];
+  const r = L.firstNegativeWithin(s, 'all', '2025-01-15', '2025-03-16');
+  assert.strictEqual(r.date, '2025-01-31');
+  assert.strictEqual(r.balance, -32000);
+  assert.strictEqual(r.accountName, null);
+  assert.strictEqual(r.provisional, false);
+  assert.strictEqual(L.firstNegativeWithin(s, 'all', '2025-01-15', '2025-01-30'), null);
+  assert.strictEqual(L.firstNegativeWithin(base(), 'all', '2025-01-15', '2025-03-16'), null);
+});
+t('firstNegativeWithin: 合計はプラスでも口座がマイナスなら口座名つき / 口座スコープ', () => {
+  const s = base(); s.incomes = [];
+  s.accounts[0].balance = 30000;
+  s.accounts.push({ id: 'a2', name: '貯金', balance: 500000, asOf: '2025-01-15' });
+  const r = L.firstNegativeWithin(s, 'all', '2025-01-15', '2025-03-16');
+  assert.strictEqual(r.date, '2025-01-31');
+  assert.strictEqual(r.balance, -22000);
+  assert.strictEqual(r.accountName, 'メイン');
+  assert.ok(r.total > 0);
+  const r2 = L.firstNegativeWithin(s, 'a1', '2025-01-15', '2025-03-16');
+  assert.strictEqual(r2.balance, -22000);
+  assert.strictEqual(r2.accountName, null);
+  assert.strictEqual(L.firstNegativeWithin(s, 'a2', '2025-01-15', '2025-03-16'), null);
+});
+t('firstNegativeWithin: 仮の金額を含むと provisional / 今すでにマイナスなら今日', () => {
+  const s = base(); s.incomes = []; s.accounts[0].balance = 1000; s.cards[0].variable = true;
+  const r = L.firstNegativeWithin(s, 'all', '2025-01-15', '2025-03-16');
+  assert.strictEqual(r.date, '2025-01-27');
+  assert.strictEqual(r.provisional, true);
+  const s2 = base(); s2.accounts[0].balance = -500;
+  const r2 = L.firstNegativeWithin(s2, 'all', '2025-01-20', '2025-03-16');
+  assert.strictEqual(r2.date, '2025-01-20'); assert.strictEqual(r2.balance, -500);
+  assert.strictEqual(L.firstNegativeWithin({ accounts: [], cards: [], payments: [], incomes: [], actuals: {} }, 'all', '2025-01-20', '2025-03-16'), null);
+});
+t('nextDebit: 次の引き落とし日・その日の最大・ほか件数・仮', () => {
+  const s = base();
+  s.payments.push({ id: 'p5', name: '保険', amount: 8000, cardId: null, accountId: 'a1', day: 27, active: true });
+  const r = L.nextDebit(s, 'all', '2025-01-16');
+  assert.strictEqual(r.date, '2025-01-27');
+  assert.strictEqual(r.top.label, '保険'); assert.strictEqual(r.top.amount, 8000);
+  assert.strictEqual(r.others, 1); assert.strictEqual(r.total, 10000);
+  assert.strictEqual(r.provisional, false);
+  // 収入は対象外、当日を含む（基準日より後なら）
+  const r2 = L.nextDebit(s, 'all', '2025-01-28');
+  assert.strictEqual(r2.date, '2025-01-31'); assert.strictEqual(r2.top.label, '家賃'); assert.strictEqual(r2.others, 0);
+  assert.strictEqual(L.nextDebit(s, 'all', '2025-01-31').date, '2025-01-31');
+  // 変動カードは仮
+  const s3 = base(); s3.cards[0].variable = true;
+  const r3 = L.nextDebit(s3, 'all', '2025-01-16');
+  assert.strictEqual(r3.date, '2025-01-27'); assert.strictEqual(r3.provisional, true); assert.strictEqual(r3.top.confirmed, false);
+  // 口座スコープ
+  assert.strictEqual(L.nextDebit(s, 'zz', '2025-01-16'), null);
+});
+t('nextDebit: 基準日当日（残高に反映済み）の支払いは出さない', () => {
+  const s = base(); s.accounts[0].asOf = '2025-01-27';
+  assert.strictEqual(L.nextDebit(s, 'all', '2025-01-27').date, '2025-01-31');
+});
+t('previousActual / compareAmounts: 先月・前回と差額、30%判定', () => {
+  const s = base(); s.actuals = { 'card:c1:2025-01': { amount: 37000 }, 'card:c1:2025-03': { amount: 40000 } };
+  assert.deepStrictEqual(L.previousActual(s, 'card', 'c1', '2025-02'), { month: '2025-01', amount: 37000, label: '先月' });
+  assert.deepStrictEqual(L.previousActual(s, 'card', 'c1', '2025-04'), { month: '2025-03', amount: 40000, label: '先月' });
+  assert.strictEqual(L.previousActual(s, 'card', 'c1', '2025-06').label, '前回');
+  assert.strictEqual(L.previousActual(s, 'card', 'c1', '2025-01'), null);
+  assert.strictEqual(L.previousActual(s, 'card', 'zz', '2025-04'), null);
+  const c = L.compareAmounts(37000, 45000);
+  assert.strictEqual(c.diff, 8000); assert.strictEqual(c.big, false);
+  assert.strictEqual(L.compareAmounts(10000, 13000).big, true);
+  assert.strictEqual(L.compareAmounts(10000, 7000).big, true);
+  assert.strictEqual(L.compareAmounts(10000, 7001).big, false);
+  assert.strictEqual(L.compareAmounts(0, 500).big, true);
+  assert.strictEqual(L.compareAmounts(0, 0).big, false);
+  assert.strictEqual(L.compareAmounts(1000, NaN), null);
+});
+t('previousActual: 毎年の支払いは「前回」', () => {
+  const s = { accounts: [acc0()], cards: [], incomes: [], payments: [{ id: 'y', name: '自動車税', amount: 39500, accountId: 'a1', day: 31, variable: true, repeat: { type: 'yearly', month: 5 } }], actuals: { 'pay:y:2025-05': { amount: 39500 } } };
+  assert.deepStrictEqual(L.previousActual(s, 'pay', 'y', '2026-05'), { month: '2025-05', amount: 39500, label: '前回' });
+});
+t('validateBackup: 正常・壊れたファイル・別アプリ・新しすぎる版', () => {
+  const ok = L.validateBackup(Object.assign({ app: 'money-app', exportedAt: '2025-01-15T00:00:00Z', version: 2 }, base()));
+  assert.strictEqual(ok.ok, true);
+  assert.deepStrictEqual(ok.counts, { accounts: 1, cards: 1, payments: 4, incomes: 1, actuals: 0 });
+  assert.strictEqual(ok.state.app, undefined); assert.strictEqual(ok.state.version, L.SCHEMA_VERSION);
+  assert.strictEqual(ok.exportedAt, '2025-01-15T00:00:00Z');
+  assert.strictEqual(L.validateBackup(JSON.stringify(base())).ok, true);   // 文字列もOK・旧形式（app無し）もOK
+  assert.strictEqual(L.validateBackup('{oops').ok, false);
+  assert.strictEqual(L.validateBackup({ x: 1 }).ok, false);
+  assert.strictEqual(L.validateBackup([]).ok, false);
+  assert.strictEqual(L.validateBackup(null).ok, false);
+  assert.strictEqual(L.validateBackup(Object.assign(base(), { app: 'other' })).ok, false);
+  assert.strictEqual(L.validateBackup(Object.assign(base(), { cards: 'x' })).ok, false);
+  assert.strictEqual(L.validateBackup(Object.assign(base(), { actuals: [] })).ok, false);
+  assert.strictEqual(L.validateBackup(Object.assign(base(), { accounts: [{ name: 'IDなし', balance: 1 }] })).ok, false);
+  assert.strictEqual(L.validateBackup(Object.assign(base(), { accounts: [{ id: 'a', balance: 'abc' }] })).ok, false);
+  assert.strictEqual(L.validateBackup(Object.assign(base(), { version: 99 })).ok, false);
+  const bad = L.validateBackup({ x: 1 }); assert.ok(typeof bad.error === 'string' && bad.error.length > 0);
+});
+t('backupFileName / backupStatus', () => {
+  assert.strictEqual(L.backupFileName('2026-11-04'), 'money-backup-20261104.json');
+  assert.deepStrictEqual(L.backupStatus(null, '2026-11-04'), { days: null, remind: true });
+  assert.deepStrictEqual(L.backupStatus('2026-10-05', '2026-11-04'), { days: 30, remind: false });
+  assert.deepStrictEqual(L.backupStatus('2026-10-04T10:00:00', '2026-11-04'), { days: 31, remind: true });
+});
 console.log(n + ' tests passed');

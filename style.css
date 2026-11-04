@@ -335,3 +335,30 @@ dialog.cdlg{max-height:90vh;max-height:90dvh}
 .pst.wait{color:var(--amb)}
 .band.over .inb-row.wait{border-top-color:#fca5a5}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* ---------- v5.7 ---------- */
+/* 大きな残高の下の1行（次の引き落とし／マイナス警告） */
+.hero .status{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;width:100%;min-height:48px;margin:8px 0 0;padding:8px 12px;border:0;border-radius:12px;font-family:inherit;font-size:13px;text-align:left;cursor:pointer;line-height:1.4}
+.hero .nextst{background:rgba(255,255,255,.16);color:#fff}
+.hero .nextst .st-k{opacity:.85}
+.hero .nextst .st-n{font-weight:700}
+.hero .nextst{flex-direction:column;align-items:stretch;gap:2px}
+.hero .nextst .st-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero .nextst .st-a{font-weight:700;white-space:nowrap;font-size:16px}
+.hero .nextst .st-r{font-weight:400;opacity:.9}
+.hero .warnst{background:var(--red-bg);color:var(--red);border:1px solid #fecaca;font-weight:700}
+.hero .warnst b{white-space:nowrap}
+.hero .st-t{flex:1;min-width:0}
+.hero .st-ic{display:inline-block;margin-right:6px}
+.hero .st-c{flex:none;font-size:16px}
+.hero .status .tag.prov{vertical-align:1px}
+/* ジャンプした内訳の行を少し光らせる */
+.hrow.flash{animation:flash 1.6s ease-out}
+@keyframes flash{0%,40%{background:#ccfbf1}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.hrow.flash{animation:none;background:#ccfbf1}}
+/* 実績入力の下の比較 */
+.cmp{margin:4px 0 0;font-size:13px;color:var(--sub)}
+.inb-row .cmp{flex:1 1 100%;margin:0}
+.cmp-big{color:var(--amb);font-weight:700}
+/* バックアップ */
+.bk-last{margin:0 0 4px;font-size:16px}
+.bk-remind{margin:0 0 8px;font-size:13px;color:var(--amb)}
