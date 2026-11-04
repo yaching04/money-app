@@ -519,3 +519,10 @@ body.typing .tabs,body.typing .fab{display:none}
 .updbar span{flex:1}
 .updbar .upd-go{border:0;border-radius:8px;background:var(--pri);color:#fff;font:inherit;font-weight:700;padding:8px 16px}
 .updbar .upd-x{border:0;background:none;color:var(--sub);font:inherit;padding:8px}
+
+/* v6.0.5: 同じ日の入金（3行目）・更新バー表示中はFABと本文を上へ */
+.hero .st2 .st-l3{display:block;font-size:13px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.has-upd{padding-bottom:calc(76px + 56px + env(safe-area-inset-bottom))}
+body.has-upd .fab{bottom:calc(84px + 56px + env(safe-area-inset-bottom))}
+body.has-upd .toast{bottom:calc(90px + 56px + env(safe-area-inset-bottom))}
+.hero .st2 .st-l3 .st-ia{font-weight:700}

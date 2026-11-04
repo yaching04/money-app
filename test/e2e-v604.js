@@ -24,7 +24,7 @@ const LONG = 'とても長い名前のクレジットカードプレミアムゴ
     const l1 = await p.evaluate(() => document.querySelector('.nextst .st-l1').innerText.replace(/\s+/g, ' '));
     const o = await vis('.nextst .st-o'), a = await vis('.nextst .st-a'), r = await vis('.nextst .st-r');
     ck(w + ' A: 「ほか2件」が見える [' + l1 + ']', o.length && o[0].ok && o[0].t.includes('ほか2件'));
-    ck(w + ' A: 金額はその日の合計（3件）と残りが合う [' + a[0].t + ' ' + r[0].t + ']', a[0].t.includes('−¥8,000') && a[0].t.includes('3件') && r[0].t.includes('¥292,000') && a[0].ok && r[0].ok);
+    ck(w + ' A: 金額はその日の合計（件数なし）と残りが合う [' + a[0].t + ' ' + r[0].t + ']', a[0].t.includes('−¥8,000') && !a[0].t.includes('件') && r[0].t.includes('¥292,000') && a[0].ok && r[0].ok);
     ck(w + ' A: 2行（金額は2行目）', a[0].top > (await vis('.nextst .st-d'))[0].top + 4);
     if (w === 375) await p.screenshot({ path: S + 'v604-home-multi-375.png', clip: { x: 0, y: 0, width: w, height: 420 } });
     // B: 9億

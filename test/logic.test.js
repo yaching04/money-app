@@ -845,4 +845,17 @@ t('axisLabel: 小数の桁数どおりに四捨五入', () => {
   assert.strictEqual(L0.axisLabel(299500, 2), '29.95万');
   assert.strictEqual(L0.axisLabel(-5, 0), '−5');
 });
+t('v6.0.5: 万の目盛りは小数2桁まで・重複なし（性質テスト）', () => {
+  assert.strictEqual(L0.axisLabel(-24550, 4), '−2.46万');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 20000; k++) {
+    const c = (rnd() - 0.5) * 2 * Math.pow(10, 4 + rnd() * 4), w = Math.pow(10, rnd() * 5);
+    for (const tk of [L0.axisTicks(c - w, c + w), L0.axisRange(c - w, c + w).ticks]) {
+      assert.ok(tk.length >= 2);
+      for (const x of tk) assert.ok(!/\.\d{3,}万/.test(x.label), x.label);
+      for (let i = 1; i < tk.length; i++) assert.notStrictEqual(tk[i].label, tk[i - 1].label);
+    }
+  }
+  const r = L0.axisTicks(-24600, -24500); assert.ok(r.every((x) => !/\.\d{3}/.test(x.label)), JSON.stringify(r));
+});
 console.log(n + ' tests passed');

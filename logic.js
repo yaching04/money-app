@@ -614,7 +614,7 @@
     // v6.0.4: 億・兆は小数2桁まで（「99999.99999999億」にしない）。1兆以上は兆
     if (a >= 1e12) { const d = Math.max(0, Math.min(2, dec + 8)); s = trim((Math.round(a / 1e12 * 10 ** d) / 10 ** d).toFixed(d)) + '兆'; }
     else if (a >= 1e8) { const d = Math.max(0, Math.min(2, dec + 4)); s = trim((Math.round(a / 1e8 * 10 ** d) / 10 ** d).toFixed(d)) + '億'; }
-    else if (a >= 10000) s = trim((Math.round(a / 10000 * 10 ** dec) / 10 ** dec).toFixed(dec)) + '万';
+    else if (a >= 10000) { const d = Math.max(0, Math.min(2, dec)); s = trim((Math.round(a / 10000 * 10 ** d) / 10 ** d).toFixed(d)) + '万'; }  // v6.0.5: 万も小数2桁まで
     else s = String(Math.round(a));
     return (v < 0 && s !== '0' ? '−' : '') + s;
   }
@@ -631,6 +631,8 @@
     for (let i = 0; i < 3 && vals.length < 3 && step > 1; i++) { const m = Math.pow(10, Math.floor(Math.log10(step) + 1e-9)), g = Math.round(step / m); step = Math.max(1, g === 1 ? m / 2 : g === 2 ? m : g === 5 ? 2 * m : 5 * m); vals = gen(step); }
     const dec = Math.min(4, Math.max(0, Math.ceil(-Math.log10(step / 10000) - 1e-9)));
     let out = vals.map((v) => ({ v, label: axisLabel(v, dec) }));
+    // v6.0.5: 万で小数3桁以上が要る細かい目盛りは円で表示（「−2.455万」→「−24,550」）
+    if (dec > 2 && vals.some((v) => Math.abs(v) >= 10000 && Math.abs(v) < 1e8)) out = vals.map((v) => ({ v, label: (v < 0 ? '−' : '') + Math.abs(v).toLocaleString('ja-JP') }));
     const dup = out.some((t, i) => i && t.label === out[i - 1].label);
     if (dup && out.length > 1) out = [out[0], out[out.length - 1]];
     // v6.0.3: 目盛りは必ず2本以上（上下）。ラベルが同じになるときは円単位で表示

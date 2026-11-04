@@ -217,10 +217,11 @@
     if (!nx && !neg) return '';
     let h = '<div class="status">';
     if (nx) {
-      const after = L.project(state, nx.date, scope).endBalance;
+      const pj = L.project(state, nx.date, scope), after = pj.endBalance;
+      const inc = pj.events.filter((e) => e.date === nx.date && e.delta > 0).reduce((t, e) => t + e.delta, 0);
       const cnt = nx.others + 1, amt = cnt > 1 ? nx.total : nx.top.amount, pv = cnt > 1 ? nx.provisional : !nx.top.confirmed;
       // v6.0.4: いつも2行。1行目=日付と名前（ほか○件は消さない）、2行目=その日の合計と残り（残りと計算が合う）
-      h += `<button class="st-line nextst st2" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-l1"><span class="st-k"><span class="st-kl">次の引き落とし</span><span class="st-ks">次回</span></span><b class="st-d">${md(nx.date).replace(/\(.\)$/, (w) => `<span class="st-dw">${w}</span>`)}</b><span class="st-n"><span class="st-nm">${esc(nx.top.label)}</span>${nx.others ? `<span class="st-o">ほか${nx.others}件</span>` : ''}</span></span><span class="st-l2 st-ar"><span class="st-a sg">${pv ? PV + ' ' : ''}−${yenAbs(amt)}${cnt > 1 ? `<span class="st-c">（${cnt}件）</span>` : ''}</span><span class="st-r">→ 残り <b>${yen(after)}</b></span></span></button>`;
+      h += `<button class="st-line nextst st2" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-l1"><span class="st-k"><span class="st-kl">次の引き落とし</span><span class="st-ks">次回</span></span><b class="st-d">${md(nx.date).replace(/\(.\)$/, (w) => `<span class="st-dw">${w}</span>`)}</b><span class="st-n"><span class="st-nm">${esc(nx.top.label)}</span>${nx.others ? `<span class="st-o">ほか${nx.others}件</span>` : ''}</span></span><span class="st-l2 st-ar"><span class="st-a sg">${pv ? PV + ' ' : ''}−${yenAbs(amt)}</span><span class="st-r">→ 残り <b>${yen(after)}</b></span></span>${inc > 0 ? `<span class="st-l3">同じ日の入金 <span class="sg st-ia">+${yenAbs(inc)}</span> を含む</span>` : ''}</button>`;
     } else h += `<div class="st-line nextst"><span class="st-k">次の引き落とし</span><span class="st-n">60日以内にはありません</span></div>`;
     if (neg) h += `<button class="st-line warnst st2" data-act="jump" data-date="${neg.date}" data-neg="1" aria-label="マイナスになる日を見る"><span class="st-l1"><span class="st-ic" aria-hidden="true">⚠</span><span class="st-w">${neg.provisional ? PV + ' ' : ''}${md(neg.date)}に${neg.accountName ? esc(neg.accountName) + 'が' : '残高が'}</span></span><span class="st-l2"><span class="st-wu"><b class="st-wa sg">${yen(neg.balance)}</b><span class="st-wt">になる見込み</span></span></span></button>`;
     return h + '</div>';
@@ -449,7 +450,7 @@
     const perm = N ? N.permission() : 'unsupported';
     const permTxt = { granted: '許可済み', denied: '拒否されています（端末の設定から変更）', default: '未設定', unsupported: 'このブラウザは非対応' }[perm];
     const ios = N && N.isIOS(), sa = N && N.isStandalone();
-    return `${backupCard()}<div class="card"><h2>土日・祝日の引き落とし</h2><div class="f chk"><label><input type="checkbox" id="holidayShift" ${L.shiftOn(state) ? 'checked' : ''}> 土日・祝日・年末年始（12/31〜1/3）は翌営業日にずらす</label><small>引き落とし・入金・カード・ローンすべてに使います。金額がわかる日（通知）はずらしません。</small></div></div><div class="card"><h2>🔔 金額を入力する日の通知（朝8:00）</h2>
+    return `${backupCard()}<div class="card"><h2>土日・祝日の引き落とし</h2><div class="f chk"><label><input type="checkbox" id="holidayShift" ${L.shiftOn(state) ? 'checked' : ''}> 土日・祝日・年末年始（12/31〜1/3）は翌営業日にずらす</label><small>引き落とし・入金・カード・ローンすべてに使います。明細が確定する日（通知）はずらしません。</small></div></div><div class="card"><h2>🔔 金額を入力する日の通知（朝8:00）</h2>
       <p class="hint">状態：<b>${permTxt}</b>${lastNotify && perm === 'granted' ? '（予約 ' + lastNotify.scheduled + '件・' + ({ trigger: '端末予約', timer: 'アプリ起動中のタイマー', none: '予定なし' }[lastNotify.mode]) + '）' : ''}</p>
       ${ios && !sa ? '<div class="info">iPhoneでは、Safariの共有ボタン →「ホーム画面に追加」で追加したアプリから開いて許可してください（iOS 16.4以降）。</div>' : ''}
       <button class="btn" data-act="notif-request" ${perm === 'unsupported' || perm === 'denied' ? 'disabled' : ''}>通知を許可する</button>
@@ -680,7 +681,7 @@
     openForm({
       title: c ? 'カードを編集' : 'カードを追加',
       body: field('name', 'カード名', `<input id="name" name="name" required maxlength="40" value="${esc(c ? c.name : '')}" placeholder="例：〇〇カード">`) +
-        field('fixDay', '明細が確定する日（毎月）', dayInput('fixDay', c ? c.fixDay : ''), '締め後に、明細で明細が確定する日。この日の朝8:00に金額の入力をお知らせします。' + DAYHINT) +
+        field('fixDay', '明細が確定する日（毎月）', dayInput('fixDay', c ? c.fixDay : ''), '締め後に、カードの明細が確定する日。この日の朝8:00に金額の入力をお知らせします。' + DAYHINT) +
         field('withdrawDay', '引き落とし日（毎月）', dayInput('withdrawDay', c ? c.withdrawDay : ''), DAYHINT) +
         field('accountId', '引き落とし口座', `<select id="accountId" name="accountId">${acctOptions(c ? c.accountId : state.accounts[0].id)}</select>`) +
         `<div class="f chk"><label><input type="checkbox" name="variable" ${!c || c.variable !== false ? 'checked' : ''}> 請求額は毎月変わる（明細が確定する日に金額を入力する）</label><small>オフ＝カード内の支払い合計を常に確定額として扱います。</small></div>` +
@@ -802,7 +803,7 @@
         repeatFields(i) +
         `<div id="dayWrap">${field('day', '入金日', dayInput('day', i ? i.day : ''), DAYHINT)}</div>` +
         `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${i ? i.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${i ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
-        `<div id="fixWrap">${field('fixDay', '明細が確定する日（毎月・任意）', dayInput('fixDay', i ? i.fixDay : '', false), '給与明細などで金額がわかる日。空欄なら入金日当日。')}</div>` +
+        `<div id="fixWrap">${field('fixDay', '明細が確定する日（毎月・任意）', dayInput('fixDay', i ? i.fixDay : '', false), '給与明細などで明細が確定する日。空欄なら入金日当日。')}</div>` +
         `<div class="f chk"><label><input type="checkbox" name="active" ${!i || i.active !== false ? 'checked' : ''}> 有効</label></div>`,
       setup(f) { const sync = () => { const rt = syncRepeat(f, false, false), noDay = rt === 'once';
         $('#dayWrap', f).hidden = noDay; f.day.disabled = noDay; f.day.required = !noDay;
@@ -1289,8 +1290,8 @@
     const d = document.createElement('div'); d.id = 'updBar'; d.className = 'updbar'; d.setAttribute('role', 'status');
     d.innerHTML = '<span>新しい版があります</span><button type="button" class="upd-go">更新する</button><button type="button" class="upd-x" aria-label="閉じる">✕</button>';
     d.querySelector('.upd-go').onclick = () => location.reload();
-    d.querySelector('.upd-x').onclick = () => d.remove();
-    document.body.appendChild(d);
+    d.querySelector('.upd-x').onclick = () => { d.remove(); document.body.classList.remove('has-upd'); };
+    document.body.appendChild(d); document.body.classList.add('has-upd');
   }
   window.__showUpdateBar = showUpdateBar;   // テスト用
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
