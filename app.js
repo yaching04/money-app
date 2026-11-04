@@ -85,7 +85,7 @@
     let right = `<div class="amt">${sgn(e.delta, e.amount, e.confirmed)}</div>`;
     if (o.balance) right += `<small class="${e.negative ? 'neg-t' : ''}">残高 ${pvYen(e.balance, e.uncertain)}${e.negative ? ' ⚠' : ''}</small>`;
     const p = L.parse(e.date);
-    const sub = [srcText(e), e.variable ? '請求額がわかる日 ' + md(e.fixDate) : ''].filter(Boolean).join('・');
+    const sub = [srcText(e), e.variable ? '明細が確定する日 ' + md(e.fixDate) : ''].filter(Boolean).join('・');
     const tap = e.variable ? `data-act="enter" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}"` : '';
     return `<div class="ev ${o.balance && e.negative ? 'bad' : ''} ${e.confirmed ? '' : 'prov'} ${e.variable ? 'tap' : ''}" ${tap}>
       <div class="d"><b>${p.m}/${p.d}</b>(${dow(e.date)})</div>
@@ -98,19 +98,18 @@
     // v6.0.3: 縦軸ラベルの幅を見積もって左余白を決める（大きい残高でも切れない）
     let padL = bars ? 34 : 48;
     if (!bars) {
-      const r0 = (ds.max - ds.min) || Math.max(1, Math.abs(ds.max) * 0.1), lo0 = ds.min < 0 ? ds.min - r0 * 0.12 : Math.max(0, ds.min - r0 * 0.35), hi0 = ds.max + r0 * 0.12;
       const lw = (t) => [...t].reduce((w, ch) => w + (/[0-9.]/.test(ch) ? 6.6 : 11.8), 0);
-      const mx = L.axisTicks(lo0, hi0).reduce((m, t) => Math.max(m, lw(t.label)), 0);
+      const mx = L.axisRange(ds.min, ds.max).ticks.reduce((m, t) => Math.max(m, lw(t.label)), 0);
       padL = Math.min(120, Math.max(48, Math.ceil(mx + 10)));
     }
     const W = 360, padR = 8, top = 24, hL = bars ? 0 : 150, gap = 0, hB = bars ? 140 : 0, bot = 22;
     const n = ds.days.length, cw = (W - padL - padR) / n, H = top + hL + gap + hB + bot;
     const X = (i) => padL + (i + 0.5) * cw;
-    const range = (ds.max - ds.min) || Math.max(1, Math.abs(ds.max) * 0.1);
-    const lo = ds.min < 0 ? ds.min - range * 0.12 : Math.max(0, ds.min - range * 0.35);
-    const hi = ds.max + range * 0.12;
+    let lo, hi, ticks = [];
+    if (bars) { const range = (ds.max - ds.min) || Math.max(1, Math.abs(ds.max) * 0.1); lo = ds.min < 0 ? ds.min - range * 0.12 : Math.max(0, ds.min - range * 0.35); hi = ds.max + range * 0.12; }
+    else ({ lo, hi, ticks } = L.axisRange(ds.min, ds.max));
     const Y = (v) => top + hL - ((v - lo) / (hi - lo)) * hL;
-    return { W, padL, padR, top, hL, gap, hB, bot, n, cw, H, X, Y, lo, hi };
+    return { W, padL, padR, top, hL, gap, hB, bot, n, cw, H, X, Y, lo, hi, ticks };
   }
   /** 残高の線の色: 前日より減った=赤 / 増えた=緑 / 変化なし=グレー */
   const LINE_COL = { down: '#dc2626', up: '#15803d', flat: '#64748b' };
@@ -130,7 +129,7 @@
   function chartSvg(ds, target, mode) {
     const bars = mode === 'bars';   // 'bars'=日別の収入・支出（集計タブ） / 既定=残高の線（ホーム）
     const G = chartGeo(ds, bars);
-    const { W, padL, padR, top, hL, gap, hB, bot, n, cw, H, X, Y, lo, hi } = G;
+    const { W, padL, padR, top, hL, gap, hB, bot, n, cw, H, X, Y, lo, hi, ticks } = G;
     let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="月の残高推移グラフ${bars ? '' : '（左右にドラッグして日付を変更）'}" ${bars ? '' : 'data-drag="1"'}>
       <defs>
         <pattern id="hatchR" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#fecaca"/><line x1="0" y1="0" x2="0" y2="5" stroke="#dc2626" stroke-width="2"/></pattern>
@@ -139,7 +138,7 @@
     // 週末の薄い背景
     ds.days.forEach((d, i) => { const w = new Date(d.date + 'T00:00:00Z').getUTCDay(); if (w === 0 || w === 6) s += `<rect x="${padL + i * cw}" y="${top}" width="${cw}" height="${hL + gap + hB}" fill="${w === 0 ? '#fef2f2' : '#eff6ff'}" opacity=".55"/>`; });
     // 横グリッド
-    if (!bars) L.axisTicks(lo, hi).forEach(({ v, label }) => { if (v === 0 && lo < 0) return; const y = Y(v); s += `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="#e2e8f0"/><text x="${padL - 4}" y="${y + 4}" text-anchor="end" class="cs-t">${esc(label)}</text>`; });
+    if (!bars) ticks.forEach(({ v, label }) => { if (v === 0 && lo < 0) return; const y = Y(v); s += `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="#e2e8f0"/><text x="${padL - 4}" y="${y + 4}" text-anchor="end" class="cs-t">${esc(label)}</text>`; });
     if (!bars && lo < 0 && hi > 0) s += `<line x1="${padL}" x2="${W - padR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#dc2626" stroke-dasharray="3 3"/><text x="${padL - 4}" y="${Y(0) + 4}" text-anchor="end" class="cs-t" fill="#dc2626">0</text>`;
     // 今日・指定日
     const mark = (date, color, label, dash) => { const i = ds.days.findIndex((d) => d.date === date); if (i < 0) return ''; return `<line x1="${X(i)}" x2="${X(i)}" y1="${top}" y2="${top + hL + gap + hB}" stroke="${color}" stroke-width="1.5" ${dash ? 'stroke-dasharray="2 3"' : ''}/><text x="${X(i) > W - 28 ? W - 2 : X(i)}" y="${top - 8}" text-anchor="${X(i) > W - 28 ? 'end' : 'middle'}" class="cs-t" fill="${color}">${label}</text>`; };
@@ -219,9 +218,11 @@
     let h = '<div class="status">';
     if (nx) {
       const after = L.project(state, nx.date, scope).endBalance;
-      h += `<button class="st-line nextst" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-k"><span class="st-kl">次の引き落とし</span><span class="st-ks">次回</span></span><b class="st-d">${md(nx.date).replace(/\(.\)$/, (w) => `<span class="st-dw">${w}</span>`)}</b><span class="st-n">${esc(nx.top.label)}${nx.others ? `<span class="st-o"> ほか${nx.others}件</span>` : ''}</span><span class="st-br" aria-hidden="true"></span><span class="st-ar"><span class="st-a sg">${nx.top.confirmed ? '' : PV + ' '}−${yenAbs(nx.top.amount)}</span><span class="st-r">→ 残り <b>${yen(after)}</b></span></span></button>`;
+      const cnt = nx.others + 1, amt = cnt > 1 ? nx.total : nx.top.amount, pv = cnt > 1 ? nx.provisional : !nx.top.confirmed;
+      // v6.0.4: いつも2行。1行目=日付と名前（ほか○件は消さない）、2行目=その日の合計と残り（残りと計算が合う）
+      h += `<button class="st-line nextst st2" data-act="jump" data-date="${nx.date}" data-ref="${nx.top.refKind}:${nx.top.refId}" aria-label="次の引き落としの日を見る"><span class="st-l1"><span class="st-k"><span class="st-kl">次の引き落とし</span><span class="st-ks">次回</span></span><b class="st-d">${md(nx.date).replace(/\(.\)$/, (w) => `<span class="st-dw">${w}</span>`)}</b><span class="st-n"><span class="st-nm">${esc(nx.top.label)}</span>${nx.others ? `<span class="st-o">ほか${nx.others}件</span>` : ''}</span></span><span class="st-l2 st-ar"><span class="st-a sg">${pv ? PV + ' ' : ''}−${yenAbs(amt)}${cnt > 1 ? `<span class="st-c">（${cnt}件）</span>` : ''}</span><span class="st-r">→ 残り <b>${yen(after)}</b></span></span></button>`;
     } else h += `<div class="st-line nextst"><span class="st-k">次の引き落とし</span><span class="st-n">60日以内にはありません</span></div>`;
-    if (neg) h += `<button class="st-line warnst" data-act="jump" data-date="${neg.date}" data-neg="1" aria-label="マイナスになる日を見る"><span class="st-ic" aria-hidden="true">⚠</span><span class="st-w">${neg.provisional ? PV + ' ' : ''}${md(neg.date)}に${neg.accountName ? esc(neg.accountName) + 'が' : '残高が'}</span><span class="st-br" aria-hidden="true"></span><b class="st-wa sg">${yen(neg.balance)}</b><span class="st-wt">になる見込み</span></button>`;
+    if (neg) h += `<button class="st-line warnst st2" data-act="jump" data-date="${neg.date}" data-neg="1" aria-label="マイナスになる日を見る"><span class="st-l1"><span class="st-ic" aria-hidden="true">⚠</span><span class="st-w">${neg.provisional ? PV + ' ' : ''}${md(neg.date)}に${neg.accountName ? esc(neg.accountName) + 'が' : '残高が'}</span></span><span class="st-l2"><span class="st-wu"><b class="st-wa sg">${yen(neg.balance)}</b><span class="st-wt">になる見込み</span></span></span></button>`;
     return h + '</div>';
   }
   /* ヒーロー（大きな残高・日付・クイック選択）。ドラッグ中はここだけ作り直す */
@@ -274,14 +275,14 @@
       const over = pending.filter((e) => e.status === 'overdue').length;
       h += `<section class="band ${over ? 'over' : ''} ${ui.inbox ? 'open' : ''}"><button class="band-btn" data-act="toggle-inbox" aria-expanded="${ui.inbox}"><span>📝 入力待ち ${pending.length}件${over ? `<small class="band-over">うち${over}件は引き落とし日を過ぎています</small>` : ''}</span><span class="chev">${ui.inbox ? '▲' : '▼'}</span></button>`;
       if (ui.inbox) {
-        h += `<div class="band-body"><p class="sub">${over ? '赤は引き落とし日を過ぎたもの（その日以降の残高が仮のまま）です。先に入力してください。' : '請求額がわかる日になりました。'}金額を入力すると、仮が確定額に置き換わります。</p>`;
+        h += `<div class="band-body"><p class="sub">${over ? '赤は引き落とし日を過ぎたもの（その日以降の残高が仮のまま）です。先に入力してください。' : '明細が確定する日になりました。'}金額を入力すると、仮が確定額に置き換わります。</p>`;
         h += pending.map((e) => {
           const w = e.kind === 'income' ? '入金' : '引き落とし';
           const st = e.status === 'overdue'
             ? `<span class="pst over">${md(e.date)}の${w}日を過ぎています</span>`
             : `<span class="pst wait">${md(e.date)}の${w}までに入力</span>`;
           return `<div class="inb-row ${e.status === 'overdue' ? 'over' : 'wait'}" data-kind="${e.refKind}" data-id="${e.refId}" data-month="${e.month}">
-          <div class="l">${st}<b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${w}日 ${md(e.date)}・請求額がわかる日 ${md(e.fixDate)}</small><small>仮 ${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
+          <div class="l">${st}<b>${esc(e.label)}</b> <span class="tag mo">${Number(e.month.slice(5))}月分</span><small>${w}日 ${md(e.date)}・明細が確定する日 ${md(e.fixDate)}</small><small>仮 ${yenAbs(e.amount)}（${esc(srcText(e))}）</small></div>
           <div class="in"><input type="number" inputmode="numeric" min="0" step="1" placeholder="${e.amount}" aria-label="${esc(e.label)} ${Number(e.month.slice(5))}月分の金額"><button class="btn sm" data-act="confirm-actual">金額を確定する</button></div>${(() => { const c = cmpInner(e.refKind, e.refId, e.month, ''); return c ? `<p class="cmp">${c}</p>` : ''; })()}</div>`;
         }).join('');
         h += `</div>`;
@@ -389,11 +390,11 @@
     let h = (state.accounts.length ? '' : needAcctGuide()) + `<div class="sec-h"><h3>🏦 口座</h3><button class="btn sm" data-act="add-account">＋ 追加</button></div><div class="card">`;
     h += state.accounts.length ? state.accounts.map((a) => `<div class="row"><div class="l tap" data-act="edit-account" data-id="${a.id}"><div class="nmw"><b class="nm">${esc(a.name)}</b>${sampleTag(a)}</div><small>${md(a.asOf)}時点の残高</small></div><button class="btn sm sec" data-act="edit-balance" data-id="${a.id}">残高変更</button><div class="r ${a.balance < 0 ? 'neg-t' : ''}">${yen(a.balance)}</div></div>`).join('') : '<div class="empty">口座が未登録です</div>';
     h += `</div><div class="sec-h"><h3>💳 カード</h3><button class="btn sm" data-act="add-card">＋ 追加</button></div><div class="card">`;
-    h += state.cards.length ? state.cards.map((c) => { const a = byId(state.accounts, c.accountId); return `<div class="row"><div class="l tap" data-act="edit-card" data-id="${c.id}"><div class="nmw"><b class="nm">${esc(c.name)}</b>${c.variable !== false ? '<span class="tag var">変動</span>' : '<span class="tag">固定</span>'}${sampleTag(c)}</div><small>請求額がわかる日 毎月${dl(c.fixDay)} → 引き落とし日 毎月${dl(c.withdrawDay)}</small><small>${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}</small></div>${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}<div class="r tap" data-act="edit-card" data-id="${c.id}">›</div></div>`; }).join('') : '<div class="empty">カードが未登録です</div>';
+    h += state.cards.length ? state.cards.map((c) => { const a = byId(state.accounts, c.accountId); return `<div class="row"><div class="l tap" data-act="edit-card" data-id="${c.id}"><div class="nmw"><b class="nm">${esc(c.name)}</b>${c.variable !== false ? '<span class="tag var">変動</span>' : '<span class="tag">固定</span>'}${sampleTag(c)}</div><small>明細が確定する日 毎月${dl(c.fixDay)} → 引き落とし日 毎月${dl(c.withdrawDay)}</small><small>${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}</small></div>${c.variable !== false ? `<button class="btn sm sec" data-act="actuals" data-kind="card" data-id="${c.id}">実績</button>` : ''}<div class="r tap" data-act="edit-card" data-id="${c.id}">›</div></div>`; }).join('') : '<div class="empty">カードが未登録です</div>';
     h += `</div><div class="sec-h"><h3>💰 収入（給与など）</h3><button class="btn sm" data-act="add-income">＋ 追加</button></div><div class="card">`;
     h += state.incomes.length ? state.incomes.map((i) => { const a = byId(state.accounts, i.accountId); const e = nx['inc:' + i.id];
-      return `<div class="row ${i.active === false ? 'off' : ''} ${onceDone(i, i.day) ? 'ldone' : ''}"><div class="l tap" data-act="edit-income" data-id="${i.id}"><div class="nmw"><b class="nm">${esc(i.name)}</b>${i.variable ? '<span class="tag var">変動</span>' : ''}${sampleTag(i)}</div><small>${esc(freqText(i, i.day))} → ${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}${i.variable ? '・請求額がわかる日' + (i.fixDay ? dl(i.fixDay) : '＝入金日') : ''}${i.active === false ? '・停止中' : ''}${e && e.nominal ? `・次回 ${md(e.date)}${L.shiftNote(e)}` : ''}</small></div>${i.variable ? `<button class="btn sm sec" data-act="actuals" data-kind="inc" data-id="${i.id}">実績</button>` : ''}<div class="r tap" data-act="edit-income" data-id="${i.id}">${i.variable && e ? sgn(1, e.amount, e.confirmed) : sgn(1, i.amount, true)}</div></div>` + pastHintHtml('inc', i.id); }).join('') : '<div class="empty">収入が未登録です（登録すると残高予測に反映されます）</div>';
-    return h + `</div><p class="note">カードで払うものは「支払い」で登録すると、カードごとに1つの請求額にまとめて引き落とし日に口座から引かれます。カードが「変動」の場合、請求額がわかる日に実績を入力します（それまでは直近3回の平均、実績がなければ登録額の合計で仮計算）。</p>`;
+      return `<div class="row ${i.active === false ? 'off' : ''} ${onceDone(i, i.day) ? 'ldone' : ''}"><div class="l tap" data-act="edit-income" data-id="${i.id}"><div class="nmw"><b class="nm">${esc(i.name)}</b>${i.variable ? '<span class="tag var">変動</span>' : ''}${sampleTag(i)}</div><small>${esc(freqText(i, i.day))} → ${a ? esc(a.name) : '<span class="neg-t">口座未設定</span>'}${i.variable ? '・明細が確定する日' + (i.fixDay ? dl(i.fixDay) : '＝入金日') : ''}${i.active === false ? '・停止中' : ''}${e && e.nominal ? `・次回 ${md(e.date)}${L.shiftNote(e)}` : ''}</small></div>${i.variable ? `<button class="btn sm sec" data-act="actuals" data-kind="inc" data-id="${i.id}">実績</button>` : ''}<div class="r tap" data-act="edit-income" data-id="${i.id}">${i.variable && e ? sgn(1, e.amount, e.confirmed) : sgn(1, i.amount, true)}</div></div>` + pastHintHtml('inc', i.id); }).join('') : '<div class="empty">収入が未登録です（登録すると残高予測に反映されます）</div>';
+    return h + `</div><p class="note">カードで払うものは「支払い」で登録すると、カードごとに1つの請求額にまとめて引き落とし日に口座から引かれます。カードが「変動」の場合、明細が確定する日に実績を入力します（それまでは直近3回の平均、実績がなければ登録額の合計で仮計算）。</p>`;
   }
 
   /* ---------- 集計（サブ画面） ---------- */
@@ -679,10 +680,10 @@
     openForm({
       title: c ? 'カードを編集' : 'カードを追加',
       body: field('name', 'カード名', `<input id="name" name="name" required maxlength="40" value="${esc(c ? c.name : '')}" placeholder="例：〇〇カード">`) +
-        field('fixDay', '請求額がわかる日（明細の確定日・毎月）', dayInput('fixDay', c ? c.fixDay : ''), '締め後に、明細で請求額がわかる日。この日の朝8:00に金額の入力をお知らせします。' + DAYHINT) +
+        field('fixDay', '明細が確定する日（毎月）', dayInput('fixDay', c ? c.fixDay : ''), '締め後に、明細で明細が確定する日。この日の朝8:00に金額の入力をお知らせします。' + DAYHINT) +
         field('withdrawDay', '引き落とし日（毎月）', dayInput('withdrawDay', c ? c.withdrawDay : ''), DAYHINT) +
         field('accountId', '引き落とし口座', `<select id="accountId" name="accountId">${acctOptions(c ? c.accountId : state.accounts[0].id)}</select>`) +
-        `<div class="f chk"><label><input type="checkbox" name="variable" ${!c || c.variable !== false ? 'checked' : ''}> 請求額は毎月変わる（請求額がわかる日に金額を入力する）</label><small>オフ＝カード内の支払い合計を常に確定額として扱います。</small></div>` +
+        `<div class="f chk"><label><input type="checkbox" name="variable" ${!c || c.variable !== false ? 'checked' : ''}> 請求額は毎月変わる（明細が確定する日に金額を入力する）</label><small>オフ＝カード内の支払い合計を常に確定額として扱います。</small></div>` +
         (c ? `<button type="button" class="btn sec" data-act="csv-open" data-id="${c.id}">このカードの明細CSVを読み込む</button>` : ''),
       onSubmit(fd) {
         const v = { name: fd.get('name').trim(), fixDay: day(fd, 'fixDay'), withdrawDay: day(fd, 'withdrawDay'), accountId: fd.get('accountId'), variable: fd.get('variable') === 'on' };
@@ -704,14 +705,14 @@
       title: p ? '支払いを編集' : '支払いを追加',
       body: field('ptype', '種類', `<select id="ptype" name="ptype">${opt('normal', '通常の支払い（サブスク・家賃など）', !(p && p.loan))}${opt('loan', 'ローン（回数が決まった分割払い）', !!(p && p.loan))}</select>`) +
         field('name', '名前・サイト／サービス名', `<input id="name" name="name" required maxlength="60" value="${esc(p ? p.name : '')}" placeholder="例：動画配信サービス">`) +
-        `<div id="varWrap" class="f chk"><label><input type="checkbox" name="variable" id="variable" ${p && p.variable ? 'checked' : ''}> 変動（毎月金額が変わる：電気代など）</label></div>` +
         field('cardId', '支払い方法（カードを選択）', `<select id="cardId" name="cardId">${state.cards.map((c) => opt(c.id, 'カード：' + c.name, c.id === curCard)).join('')}${opt('', '口座から直接引き落とし', curCard === '')}</select>`, state.cards.length ? '' : 'カードが未登録です。先に「カード・口座」タブで追加すると選べます。') +
         `<div id="accWrap">${field('accountId', '引き落とし口座', `<select id="accountId" name="accountId">${acctOptions(p ? p.accountId : state.accounts[0].id)}</select>`)}</div>` +
+        `<div id="varWrap" class="f chk"><label><input type="checkbox" name="variable" id="variable" ${p && p.variable ? 'checked' : ''}> 変動（毎月金額が変わる：電気代など）</label></div>` +
         repeatFields(p && !p.loan ? p : null) +
         `<div id="dayWrap">${field('day', '引き落とし日', dayInput('day', p && !p.cardId ? p.day : ''), DAYHINT)}</div>` +
         `<div id="cardDayNote" class="guide" hidden></div>` +
         `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${p ? p.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${p ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
-        `<div id="fixWrap">${field('fixDay', '請求額がわかる日（明細の確定日・毎月・任意）', dayInput('fixDay', p ? p.fixDay : '', false), '請求額がわかる日。空欄なら引き落とし日当日。この日の朝8:00に入力をお知らせします。')}</div>` +
+        `<div id="fixWrap">${field('fixDay', '明細が確定する日（毎月・任意）', dayInput('fixDay', p ? p.fixDay : '', false), '明細が確定する日。空欄なら引き落とし日当日。この日の朝8:00に入力をお知らせします。')}</div>` +
         `<div id="loanWrap">` +
         field('loanCount', '支払い回数（全部で何回）', `<input id="loanCount" name="loanCount" type="number" inputmode="numeric" min="1" max="600" step="1" value="${p && p.loan ? p.loan.count : ''}" placeholder="例：36">`) +
         field('loanPaid', 'すでに支払った回数', `<input id="loanPaid" name="loanPaid" type="number" inputmode="numeric" min="0" max="600" step="1" value="${p && p.loan ? '' : 0}">`, '途中から登録するときは、これまでに払った回数を入れると開始月が自動で決まります。') +
@@ -796,12 +797,12 @@
     openForm({
       title: i ? '収入を編集' : '収入を追加',
       body: field('name', '名前', `<input id="name" name="name" required maxlength="40" value="${esc(i ? i.name : '')}" placeholder="例：給与">`) +
-        `<div id="varWrap" class="f chk"><label><input type="checkbox" name="variable" id="variable" ${i && i.variable ? 'checked' : ''}> 変動（毎月金額が変わる：給与の残業代など）</label></div>` +
         field('accountId', '入金口座', `<select id="accountId" name="accountId">${acctOptions(i ? i.accountId : state.accounts[0].id)}</select>`) +
+        `<div id="varWrap" class="f chk"><label><input type="checkbox" name="variable" id="variable" ${i && i.variable ? 'checked' : ''}> 変動（毎月金額が変わる：給与の残業代など）</label></div>` +
         repeatFields(i) +
         `<div id="dayWrap">${field('day', '入金日', dayInput('day', i ? i.day : ''), DAYHINT)}</div>` +
         `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${i ? i.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${i ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
-        `<div id="fixWrap">${field('fixDay', '金額がわかる日（明細の確定日・毎月・任意）', dayInput('fixDay', i ? i.fixDay : '', false), '給与明細などで金額がわかる日。空欄なら入金日当日。')}</div>` +
+        `<div id="fixWrap">${field('fixDay', '明細が確定する日（毎月・任意）', dayInput('fixDay', i ? i.fixDay : '', false), '給与明細などで金額がわかる日。空欄なら入金日当日。')}</div>` +
         `<div class="f chk"><label><input type="checkbox" name="active" ${!i || i.active !== false ? 'checked' : ''}> 有効</label></div>`,
       setup(f) { const sync = () => { const rt = syncRepeat(f, false, false), noDay = rt === 'once';
         $('#dayWrap', f).hidden = noDay; f.day.disabled = noDay; f.day.required = !noDay;
@@ -854,7 +855,7 @@
     openForm({
       title: '実績（確定額）を入力',
       saveLabel: '金額を確定する', deleteLabel: '実績を取り消す', doneMsg: '確定額を保存しました',
-      body: `<p class="hint"><b>${esc(label)}</b>${e ? '<br>' + (e.kind === 'income' ? '入金日 ' : '引き落とし日 ') + md(e.date) + '・請求額がわかる日 ' + md(e.fixDate) : ''}<br>現在: ${e ? (e.confirmed ? '' : '仮 ') + yenAbs(e.amount) + '（' + srcText(e) + '）' : '-'}</p>` +
+      body: `<p class="hint"><b>${esc(label)}</b>${e ? '<br>' + (e.kind === 'income' ? '入金日 ' : '引き落とし日 ') + md(e.date) + '・明細が確定する日 ' + md(e.fixDate) : ''}<br>現在: ${e ? (e.confirmed ? '' : '仮 ') + yenAbs(e.amount) + '（' + srcText(e) + '）' : '-'}</p>` +
         field('amount', ymLabel(month) + '分の確定金額（円）', `<input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${e && e.confirmed ? e.amount : ''}" placeholder="${cur}" autofocus><p class="cmp" id="cmp" hidden></p>`, '入力すると仮の金額が実績に置き換わり、今後の平均（直近3回）にも使われます。'),
       onSubmit(fd) { const v = num(fd, 'amount'); if (!isFinite(v) || fd.get('amount') === '') return '金額を入力してください'; if (v < 0) return NEG_MSG;
         return confirmOverwrite(kind, id, month, v).then((ok) => { if (!ok) return CANCEL; L.setActual(state, kind, id, month, v); }); },
@@ -966,7 +967,7 @@
         ${dr.outliers.length ? `<p class="hint csv-warn">ほかの明細と日付が大きく離れた行が${dr.outliers.length}件あります（${dr.outliers.slice(0, 3).map((r) => esc(r.date.replace(/-/g, '/'))).join('・')}${dr.outliers.length > 3 ? ' ほか' : ''}）。請求月の推定には使っていません。日付が正しいか確認してください。</p>` : ''}
         ${skipped.length ? `<details class="csv-skip"><summary>読めなかった行${skipped.length}件（日付か金額を読み取れないため除外）</summary><ul class="items">${skipped.slice(0, 10).map((x) => `<li>・${x.line ? x.line + '行目：' : ''}${esc(String(x.text).slice(0, 40))}</li>`).join('')}${skipped.length > 10 ? `<li>ほか${skipped.length - 10}件</li>` : ''}</ul></details>` : ''}
         ${rejoined ? `<p class="hint">引用符なしでカンマ付きの金額（例：1,234）を${rejoined}件、1つの金額として読みました。</p>` : ''}
-        ${field('csvMonth', 'どの月の請求ですか（引き落としの月）', `<select id="csvMonth">${months.map((m) => opt(m, billOpt(card, m) + (m === guess ? '・推定' : ''), m === csv.month)).join('')}</select>`, 'カードの「請求額がわかる日」「引き落とし日」と、明細の最後の利用日から推定しています。違うときは変更してください。')}
+        ${field('csvMonth', 'どの月の請求ですか（引き落としの月）', `<select id="csvMonth">${months.map((m) => opt(m, billOpt(card, m) + (m === guess ? '・推定' : ''), m === csv.month)).join('')}</select>`, 'カードの「明細が確定する日」「引き落とし日」と、明細の最後の利用日から推定しています。違うときは変更してください。')}
         ${had ? `<p class="hint">この月は前にも読み込んでいます（${had}件）。同じ明細は二重に数えません：合わせて ${pm.count}件・${yenAbs(pm.total)}</p>` : ''}
         <div class="csv-rows">${rows.slice(0, MAX).map((r) => `<div class="row"><div class="l"><b>${esc(r.merchant)}${sgKeys.has(CI.merchantKey(r.merchant)) ? '<span class="tag sug">毎月？</span>' : ''}</b><small>${md(r.date)}${dr.outliers.includes(r) ? '<span class="tag">日付？</span>' : ''}</small></div><div class="r">${csvAmt(r.amount)}</div></div>`).join('')}${rows.length > MAX ? `<p class="hint">ほか${rows.length - MAX}件</p>` : ''}</div>
         <button type="button" class="lnk" data-act="csv-map">列の割り当てを変更</button>
@@ -1039,7 +1040,7 @@
   /* ---------- サンプル・バックアップ ---------- */
   function addSample() {
     const t = todayStr(), base = L.monthKey(t);
-    const addD = L.addDays, dom = (d) => L.parse(d).d;   // サンプルの残高は「今日」入力したもの（今日は確定）。直近の「請求額がわかる日」を過ぎた入力待ちも見せる
+    const addD = L.addDays, dom = (d) => L.parse(d).d;   // サンプルの残高は「今日」入力したもの（今日は確定）。直近の「明細が確定する日」を過ぎた入力待ちも見せる
     const a = { id: uid(), name: '【例】メイン口座', balance: 300000, asOf: t, sample: true };
     const a2 = { id: uid(), name: '【例】サブ口座', balance: 50000, asOf: t, sample: true };
     const c1 = { id: uid(), name: '【例】Aカード（請求額が変動）', fixDay: 15, withdrawDay: 27, accountId: a.id, variable: true, sample: true };
@@ -1283,7 +1284,24 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (!isTyping(document.activeElement)) { document.body.classList.remove('typing'); if (window.scrollX) window.scrollTo(0, window.scrollY); } });
   render();
   syncNotify();
+  function showUpdateBar() {
+    if (document.getElementById('updBar')) return;
+    const d = document.createElement('div'); d.id = 'updBar'; d.className = 'updbar'; d.setAttribute('role', 'status');
+    d.innerHTML = '<span>新しい版があります</span><button type="button" class="upd-go">更新する</button><button type="button" class="upd-x" aria-label="閉じる">✕</button>';
+    d.querySelector('.upd-go').onclick = () => location.reload();
+    d.querySelector('.upd-x').onclick = () => d.remove();
+    document.body.appendChild(d);
+  }
+  window.__showUpdateBar = showUpdateBar;   // テスト用
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    navigator.serviceWorker.register('sw.js').then(() => syncNotify()).catch(() => {});
+    // v6.0.4: 新しい版が入ったら下に「新しい版があります」バー（最初のインストールでは出さない）
+    const hadCtrl = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      syncNotify();
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing; if (!w) return;
+        w.addEventListener('statechange', () => { if (w.state === 'activated' && hadCtrl) showUpdateBar(); });
+      });
+    }).catch(() => {});
   }
 })();

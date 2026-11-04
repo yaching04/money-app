@@ -499,3 +499,23 @@ body.typing .tabs,body.typing .fab{display:none}
 .hero .st-line.warnst{flex-wrap:wrap;row-gap:0}
 .hero .warnst .st-w{flex:0 1 auto;min-width:0;max-width:calc(100% - 24px)}
 .hero .warnst .st-wa{white-space:nowrap}
+
+/* v6.0.4: 次回・マイナス警告はいつも2行（1行目=日付と名前、2行目=金額）。金額は切らずに折り返す */
+.hero .st-line.st2{display:flex;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:0;white-space:normal}
+.hero .st2 .st-l1{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}
+.hero .st2 .st-l1>*{flex:none}
+.hero .st2 .st-n,.hero .st2 .st-w{flex:1 1 0;min-width:0;display:flex;overflow:hidden;white-space:nowrap}
+.hero .st2 .st-nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.hero .st2 .st-o{flex:none;margin-left:4px}
+.hero .st2 .st-w{display:block;text-overflow:ellipsis}
+.hero .st2 .st-l2{display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:8px;min-width:0}
+.hero .st2 .st-l2>*{flex:none;white-space:nowrap;margin:0}
+.hero .st2 .st-wu{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;column-gap:4px}
+.hero .st2 .st-wu>*{white-space:nowrap}
+.hero .st2 .st-l2.st-ar{margin-left:0;flex:none;white-space:normal;gap:0 8px}
+
+/* v6.0.4: 更新のお知らせバー（タブバーの上） */
+.updbar{position:fixed;left:0;right:0;margin:0 auto;max-width:var(--w);box-sizing:border-box;bottom:calc(64px + env(safe-area-inset-bottom));z-index:7;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 16px;background:#fff;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}
+.updbar span{flex:1}
+.updbar .upd-go{border:0;border-radius:8px;background:var(--pri);color:#fff;font:inherit;font-weight:700;padding:8px 16px}
+.updbar .upd-x{border:0;background:none;color:var(--sub);font:inherit;padding:8px}

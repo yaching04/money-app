@@ -30,8 +30,8 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   // 1) 支払いの追加（変動・口座直接）
   await load(base({ payments: [P({ id: 'p1', name: '動画', amount: 1000, day: 10 })] }));
   await tab('pay'); await clickIn('[data-act=add-pay]');
-  const ids = ['name', 'variable', 'cardId', 'accountId', 'repeat', 'day', 'amount'];
-  ck('支払い: 名前→変動→支払い方法→口座→繰り返し→日→金額 [' + (await order(ids)) + ']', (await order(ids)) === ids.join(','));
+  const ids = ['name', 'cardId', 'accountId', 'variable', 'repeat', 'day', 'amount'];
+  ck('支払い: 名前→支払い方法→口座→変動→繰り返し→日→金額 [' + (await order(ids)) + ']', (await order(ids)) === ids.join(','));
   await p.type('#name', '電気代'); await p.click('#variable'); await sleep(200);
   ck('支払い: 日付未選択でも「前回の引き落としの金額」 [' + (await txt('#amtLabel')) + ']', (await txt('#amtLabel')) === '前回の引き落としの金額');
   ck('支払い: ヒント「引き落とし日を選ぶと日付が入ります」', (await txt('#amtHint')) === '引き落とし日を選ぶと日付が入ります' && (await vis('#amtHint')));
@@ -64,8 +64,8 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
 
   // 2) 収入の追加
   await tab('acct'); await clickIn('[data-act=add-income]');
-  const ids2 = ['name', 'variable', 'accountId', 'repeat', 'day', 'amount'];
-  ck('収入: 名前→変動→口座→繰り返し→日→金額 [' + (await order(ids2)) + ']', (await order(ids2)) === ids2.join(','));
+  const ids2 = ['name', 'accountId', 'variable', 'repeat', 'day', 'amount'];
+  ck('収入: 名前→口座→変動→繰り返し→日→金額 [' + (await order(ids2)) + ']', (await order(ids2)) === ids2.join(','));
   await p.click('#variable'); await sleep(200);
   ck('収入: 日付未選択でも「前回の入金の金額」・ヒント・まだ分からない', (await txt('#amtLabel')) === '前回の入金の金額' && (await txt('#amtHint')) === '入金日を選ぶと日付が入ります' && (await vis('#unkWrap')));
   await p.select('#day', '25'); await sleep(200);

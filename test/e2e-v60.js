@@ -122,7 +122,7 @@ const base = (o) => Object.assign({ version: 2, accounts: [A()], cards: [], paym
   ck('枠: 1行だけ（マイナスでない）', (await cnt('.hero .status > *')) === 1 && (await cnt('.hero .status > .nextst')) === 1);
   const n1 = await txt('.hero .nextst');
   ck('枠1行目: 次の引き落とし 11/10 動画 → 残り [' + n1 + ']', /^次の引き落とし/.test(n1) && n1.includes('11/10(火)') && n1.includes('動画') && n1.includes('→ 残り') && n1.includes('199,000'));
-  ck('枠1行目: 1行の高さ', (await p.$eval('.hero .nextst', (e) => e.getBoundingClientRect().height)) <= 48);
+  ck('枠1行目: 2行（v6.0.4: 日付と名前／金額）', (await p.$eval('.hero .nextst', (e) => e.getBoundingClientRect().height)) <= 72);
   ck('見出し「これからの引き落とし」', await p.evaluate(() => [...document.querySelectorAll('#main h2')].some((h) => h.textContent.trim() === 'これからの引き落とし')));
   await p.evaluate(() => { const t = document.querySelector('#target'); t.value = Logic.today(); t.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(300);
   ck('指定日=今日でも3件出る', (await cnt('.hrow[data-ref]')) === 3 && (await txt('.hsub')).includes('より後'));
@@ -142,8 +142,8 @@ const base = (o) => Object.assign({ version: 2, accounts: [A()], cards: [], paym
   await shot('home');
   for (const wd of [320, 375, 390]) {
     await p.setViewport({ width: wd, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }); await sleep(250);
-    const fit = await p.evaluate(() => { const l = document.querySelector('.hero .nextst'), r = l.querySelector('.st-r').getBoundingClientRect(), b = l.getBoundingClientRect(); return { ok: r.right <= b.right + 0.5 && r.left >= b.left && b.height <= (innerWidth <= 360 ? 72 : 48), h: b.height }; });
-    ck(wd + 'px: 「→ 残り」まで見える（360px以下は2行に分ける：v6.0.3） [' + fit.h + ']', fit.ok);
+    const fit = await p.evaluate(() => { const l = document.querySelector('.hero .nextst'), r = l.querySelector('.st-r').getBoundingClientRect(), b = l.getBoundingClientRect(); return { ok: r.right <= b.right + 0.5 && r.left >= b.left && b.height <= 72, h: b.height }; });
+    ck(wd + 'px: 「→ 残り」まで見える（v6.0.4: いつも2行） [' + fit.h + ']', fit.ok);
   }
   await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }); await sleep(200);
   // 設定でずらさない

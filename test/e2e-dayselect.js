@@ -19,7 +19,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   ck('サンプルBカードの確定日=月末(99)', bc && bc.fixDay === 99);
   await p.click('[data-tab=acct]'); await sleep(250);
   const txt = await p.evaluate(() => document.body.innerText);
-  ck('一覧に「毎月月末」と表示', txt.includes('請求額がわかる日 毎月月末'));
+  ck('一覧に「毎月月末」と表示', txt.includes('明細が確定する日 毎月月末'));
   // Aカードを編集
   const ac = s.cards.find((c) => c.name.includes('Aカード'));
   await p.click(`[data-act=edit-card][data-id="${ac.id}"]`); await sleep(300);

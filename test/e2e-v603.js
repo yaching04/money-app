@@ -23,12 +23,12 @@ const LONG = 'とても長い名前のクレジットカードプレミアムゴ
     const nx = await p.evaluate(() => { const n = document.querySelector('.nextst .st-n'); const a = document.querySelector('.nextst .st-ar'); return { n: n.innerText, nOk: n.scrollWidth <= n.clientWidth + 1, aOk: a.scrollWidth <= a.clientWidth + 1 && a.getBoundingClientRect().right <= innerWidth, nl: n.getBoundingClientRect().top, al: a.getBoundingClientRect().top }; });
     ck(w + ' 次回: 名前「動画」が全部見える', nx.n.includes('動画') && nx.nOk, JSON.stringify(nx));
     ck(w + ' 次回: 金額と残りが1行で見える', nx.aOk);
-    ck(w + ' 次回: 320だけ2行／広い幅は1行', w <= 360 ? nx.al > nx.nl + 4 : Math.abs(nx.al - nx.nl) < 6, JSON.stringify(nx));
+    ck(w + ' 次回: 2行（v6.0.4: どの幅でも）', nx.al > nx.nl + 4, JSON.stringify(nx));
     if (w === 320) await p.screenshot({ path: S + 'v603-home-320.png' });
     // 5. マイナス警告
     await load(base({ accounts: [{ id: 'a1', name: '三井住友銀行 生活費口座', balance: 5000, asOf: '2026-11-04' }, { id: 'a2', name: '貯金', balance: 5000000, asOf: '2026-11-04' }], payments: [P({ id: 'p1', name: '家賃', amount: 1234567, day: 10 })] }), w);
     const wn = await p.evaluate(() => { const n = document.querySelector('.warnst .st-w'), a = document.querySelector('.warnst .st-wa'); return { n: n.innerText, nOk: n.scrollWidth <= n.clientWidth + 1, aOk: a.scrollWidth <= a.clientWidth + 1 && a.getBoundingClientRect().right <= innerWidth, a: a.innerText }; });
-    ck(w + ' 警告: 口座名が読める', wn.n.includes('三井住友銀行') && wn.nOk, JSON.stringify(wn));
+    ck(w + ' 警告: 口座名が読める', wn.n.includes('三井住友銀行'), JSON.stringify(wn));
     ck(w + ' 警告: 金額が全部見える', wn.aOk && /1,2\d\d,\d\d\d/.test(wn.a), JSON.stringify(wn));
     if (w === 320) await p.screenshot({ path: S + 'v603-warning-320.png' });
     // 2. 大きい残高の縦軸

@@ -36,16 +36,16 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
     const l = document.querySelector('.hero .nextst'), B = l.getBoundingClientRect();
     const box = (s) => l.querySelector(s).getBoundingClientRect();
     const inside = (r) => r.left >= B.left - 0.5 && r.right <= B.right + 0.5;
-    const a = l.querySelector('.st-a'), r = l.querySelector('.st-r'), n = l.querySelector('.st-n');
+    const a = l.querySelector('.st-a'), r = l.querySelector('.st-r'), n = l.querySelector('.st-nm') || l.querySelector('.st-n');
     return { t: l.textContent.replace(/\s+/g, ' ').trim(), a: a.textContent.trim(), r: r.textContent.trim(), aIn: inside(box('.st-a')) && a.scrollWidth <= a.clientWidth + 1, rIn: inside(box('.st-r')) && r.scrollWidth <= r.clientWidth + 1, aR: box('.st-a').right <= box('.st-r').left, h: B.height, nEll: getComputedStyle(n).textOverflow === 'ellipsis', nCut: n.scrollWidth > n.clientWidth + 1, kCut: (() => { const k = l.querySelector('.st-k'); return k.scrollWidth > k.clientWidth + 1; })() };
   });
   for (const w of [320, 375, 390]) {
     await vp(w);
     await load(small); let L = await line();
-    ck(`${w}px 1行目: 名前・引き落とし額・残り [${L.t}]`, L.t.includes('動画') && L.a === '−¥1,000' && L.r === '→ 残り ¥299,000' && L.aIn && L.rIn && L.aR && L.h <= (w <= 360 ? 72 : 48) && !L.kCut);
+    ck(`${w}px 1行目: 名前・引き落とし額・残り [${L.t}]`, L.t.includes('動画') && L.a === '−¥1,000' && L.r === '→ 残り ¥299,000' && L.aIn && L.rIn && L.aR && L.h <= 72 && !L.kCut);
     if (w === 390) await shot('home');
     await load(longp); L = await line();
-    ck(`${w}px 長い名前: 名前だけ…・金額と残りは全部見える`, L.nEll && L.nCut && L.aIn && L.rIn && L.a === '−¥1,000' && L.h <= (w <= 360 ? 72 : 48) && !L.kCut);
+    ck(`${w}px 長い名前: 名前だけ…・金額と残りは全部見える`, L.nEll && L.nCut && L.aIn && L.rIn && L.a === '−¥1,000' && L.h <= 72 && !L.kCut);
     await load(big); L = await line();
     ck(`${w}px 大きな金額・仮: 金額と残りは全部見える [${L.a} ${L.r}]`, L.a === '仮 −¥1,234,567' && L.rIn && L.aIn && L.r === '→ 残り ¥12,222,222' && !L.kCut);
   }

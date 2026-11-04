@@ -85,9 +85,10 @@ const LONG = 'とても長い名前のサブスクリプションサービスプ
     incomes: [{ id: 'i1', name: '給与' + LONG, amount: 250000, day: 25, accountId: 'a1', active: true, variable: true, createdAt: '2026-08-01' }] });
   await load(S4);
   for (const t of ['pay', 'acct', 'sum']) { await tab(t);
-    const r2 = await p.evaluate(() => [...document.querySelectorAll('#main .nm')].filter((e) => e.offsetParent).map((e) => { const lh = parseFloat(getComputedStyle(e).lineHeight) || 20; const tag = e.querySelector('.tag'); return { lines: Math.round(e.clientHeight / lh), tagHidden: !!tag && tag.getBoundingClientRect().bottom > e.getBoundingClientRect().bottom + 1 }; }));
+    const r2 = await p.evaluate(() => [...document.querySelectorAll('#main .nm')].filter((e) => e.offsetParent).map((e) => { const lh = parseFloat(getComputedStyle(e).lineHeight) || 20; const box = e.closest('.nmw') || e; const tag = box.querySelector('.tag'); const card = (e.closest('.card,.row,li') || document.body).getBoundingClientRect(); const tb = tag && tag.getBoundingClientRect(); return { lines: Math.round(e.clientHeight / lh), tag: tag ? tag.textContent : '', tagHidden: !!tag && (tb.width < 1 || tb.right > card.right + 1 || tag.scrollWidth > tag.clientWidth + 1) }; }));
     ck('【v601-3】' + t + ': 長い名前は2行まで', r2.length && r2.every((x) => x.lines <= 2), JSON.stringify(r2));
     ck('【v601-3】' + t + ': 「変動」タグが省略で隠れない', r2.every((x) => !x.tagHidden), JSON.stringify(r2));
+    if (t === 'acct') ck('【v603-3】acct: カード・収入の「変動」タグが表示される', r2.filter((x) => x.tag === '変動').length >= 2, JSON.stringify(r2));
   }
   await load(S4); await tab('sum'); const xp = await p.evaluate(() => { const e = [...document.querySelectorAll('#main .nm.xp')].find((x) => x.offsetParent && x.scrollHeight > x.clientHeight + 1); if (!e) return null; e.scrollIntoView({ block: 'center' }); e.setAttribute('data-qa', '1'); return e.clientHeight; });
   if (xp !== null) await p.click('[data-qa="1"]'); await sleep(300);
@@ -101,6 +102,11 @@ const LONG = 'とても長い名前のサブスクリプションサービスプ
     const cl = await p.evaluate(() => { const svg = [...document.querySelectorAll('svg')].find((s) => s.querySelector('text.cs-t')); if (!svg) return 'nosvg'; const l = svg.getBoundingClientRect().left;
       return [...svg.querySelectorAll('text.cs-t[text-anchor=end]')].filter((t) => t.getBoundingClientRect().left < l - 0.5).map((t) => t.textContent).join(','); });
     ck('【v60-axis】' + w + ': 残高12億台・差1000円で縦軸ラベルが切れない', cl === '', cl); await shot('axis-huge-' + w); }
+  // ---- グラフ縦軸: 数十円・横ばいでも見える目盛りが2本以上（v6.0.3）
+  for (const bal of [45, -45, 25, 0]) { await vp(375); await load(base({ accounts: [A({ balance: bal })], payments: [] }));
+    const vis = await p.evaluate(() => { const svg = [...document.querySelectorAll('svg')].find((s) => s.querySelector('text.cs-t')); if (!svg) return []; const r = svg.getBoundingClientRect();
+      return [...svg.querySelectorAll('text.cs-t[text-anchor=end]')].filter((t) => { const b = t.getBoundingClientRect(); return b.top >= r.top - 0.5 && b.bottom <= r.bottom + 0.5; }).map((t) => t.textContent); });
+    ck('【v603-6】残高' + bal + '円・横ばい: グラフ内に見える縦軸目盛りが2本以上', vis.length >= 2, vis.join(',')); }
   // ---- CSV: 見出しとステップ表示の一致
   await vp(390); await load(base({ cards: [{ id: 'c1', name: 'テストカード', fixDay: 10, withdrawDay: 27, accountId: 'a1', variable: true }] }));
   await tab('pay'); await click('[data-act=csv-open]');

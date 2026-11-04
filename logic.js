@@ -428,7 +428,7 @@
       byDate[e.fixDate].names.push(e.label); byDate[e.fixDate].keys.push(actualKey(e.refKind, e.refId, e.month)); }
     return Object.keys(byDate).sort().map((k) => Object.assign(byDate[k], {
       title: '金額の入力をお願いします',
-      body: byDate[k].names.join('、') + ' の請求額がわかる日です。金額を入力すると残高予測が正確になります。' }));
+      body: byDate[k].names.join('、') + ' の明細が確定する日です。金額を入力すると残高予測が正確になります。' }));
   }
 
   /* ---------- v5.7 ホームの1行表示（マイナス警告・次の支払い）と比較・バックアップ ---------- */
@@ -611,7 +611,9 @@
     if (!isFinite(v)) v = 0;
     const a = Math.abs(v); let s;
     const trim = (x) => x.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-    if (a >= 1e8) { const d = Math.min(8, dec + 4); s = trim((Math.round(a / 1e8 * 10 ** d) / 10 ** d).toFixed(d)) + '億'; }
+    // v6.0.4: 億・兆は小数2桁まで（「99999.99999999億」にしない）。1兆以上は兆
+    if (a >= 1e12) { const d = Math.max(0, Math.min(2, dec + 8)); s = trim((Math.round(a / 1e12 * 10 ** d) / 10 ** d).toFixed(d)) + '兆'; }
+    else if (a >= 1e8) { const d = Math.max(0, Math.min(2, dec + 4)); s = trim((Math.round(a / 1e8 * 10 ** d) / 10 ** d).toFixed(d)) + '億'; }
     else if (a >= 10000) s = trim((Math.round(a / 10000 * 10 ** dec) / 10 ** dec).toFixed(dec)) + '万';
     else s = String(Math.round(a));
     return (v < 0 && s !== '0' ? '−' : '') + s;
@@ -637,7 +639,19 @@
     return out;
   }
 
-  return { axisTicks, axisLabel, SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, holidays, holidayName, nonBusiness, nextBusinessDay, shiftOn, shiftNote, lastOccurrence, dow, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
+  /** v6.0.4: グラフの縦の範囲。平らでも最低限の幅をとり、目盛りの最小・最大を必ず含める（目盛りが全部枠内に描かれる） */
+  function axisRange(min, max) {
+    min = Number(min) || 0; max = Number(max) || 0; if (max < min) { const t = min; min = max; max = t; }
+    const am = Math.max(Math.abs(max), Math.abs(min)), unit = am >= 1e12 ? 1e12 : am >= 1e8 ? 1e8 : 1;
+    const floor = Math.max(20, am * 0.003, unit * 0.04);  // 億・兆は小数2桁で区別できる幅
+    let range = max - min; if (range < floor) { const m = (max + min) / 2; min = m - floor / 2; max = m + floor / 2; range = floor; }
+    let lo = min < 0 ? min - range * 0.12 : Math.max(0, min - range * 0.35), hi = max + range * 0.12;
+    const ticks = axisTicks(lo, hi);
+    if (ticks.length) { lo = Math.min(lo, ticks[0].v); hi = Math.max(hi, ticks[ticks.length - 1].v); }
+    return { lo, hi, ticks };
+  }
+
+  return { axisTicks, axisLabel, axisRange, SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, holidays, holidayName, nonBusiness, nextBusinessDay, shiftOn, shiftNote, lastOccurrence, dow, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
     repType, occursIn, itemDates, nextOccurrence, repeatLabel, loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
     computePending, computeReminders, migrate,

@@ -827,6 +827,19 @@ t('axisTicks: ランダム（性質テスト）でも必ず2本以上・ラベ�
   }
   assert.ok(L0.axisTicks(300000, 300030).length >= 2); assert.ok(L0.axisTicks(5, 5).length >= 2);
 });
+t('axisRange: 目盛りは全部範囲内・2本以上・重複なし・ラベルは短い（性質テスト）', () => {
+  let seed = 777; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const cases = [[0, 0], [-45, -45], [25, 25], [1e11, 1e11 + 30], [1e13, 1e13 + 5], [99999999999, 100000000001]];
+  for (let i = 0; i < 20000; i++) { const b = Math.round((rnd() - 0.2) * 10 ** (rnd() * 13.5)); cases.push([b, b + rnd() * 10 ** (rnd() * 8)]); }
+  for (const [mn, mx] of cases) {
+    const { lo, hi, ticks } = L0.axisRange(mn, mx), k = mn + '..' + mx;
+    assert.ok(ticks.length >= 2, k); assert.ok(lo <= mn && hi >= mx, k);
+    assert.ok(ticks.every((t) => t.v >= lo && t.v <= hi), k);
+    assert.strictEqual(new Set(ticks.map((t) => t.label)).size, ticks.length, k);
+    assert.ok(ticks.every((t) => t.label.length <= 9 && !/\.\d{3,}[億兆]/.test(t.label)), k + ' ' + ticks.map((t) => t.label));
+  }
+  assert.ok(L0.axisRange(1e13, 1e13 + 5).ticks.every((t) => /兆$/.test(t.label)));
+});
 t('axisLabel: 小数の桁数どおりに四捨五入', () => {
   assert.strictEqual(L0.axisLabel(299500, 1), '30万');
   assert.strictEqual(L0.axisLabel(299500, 2), '29.95万');
