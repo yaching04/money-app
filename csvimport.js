@@ -26,22 +26,37 @@
     text = String(text || '').replace(/^\uFEFF/, '');
     const head = text.slice(0, 2000);
     const delim = !head.includes(',') && head.includes('\t') ? '\t' : ',';
-    const rows = []; let row = [], f = '', q = false, i = 0;
-    const n = text.length;
+    const rows = []; let row = [], f = '', q = false, i = 0, rowStart = 0;
+    const n = text.length, bad = [];
+    const lineOf = (pos) => { let k = 1; for (let j = 0; j < pos; j++) if (text[j] === '\n') k++; return k; };
+    // 引用符が閉じていない行（"…, のまま次の行へ続いてしまう）は、その1行だけ「読めなかった行」にして次の行から読み直す
+    const recover = () => {
+      let e = rowStart; while (e < n && text[e] !== '\r' && text[e] !== '\n') e++;
+      const raw = text.slice(rowStart, e).trim();
+      if (raw) bad.push({ line: lineOf(rowStart), text: raw, reason: 'quote' });
+      i = e + (text[e] === '\r' && text[e + 1] === '\n' ? 2 : e < n ? 1 : 0);
+      row = []; f = ''; q = false; rowStart = i;
+    };
+    // 引用の中に改行があり、その次の行が日付で始まっていれば、閉じ忘れとみなす（正しい複数行セルは残す）
+    const NEWREC = /[\r\n]\s*"?(\d{4}[\/\-.年]\d{1,2}|\d{2}[\/\-.]\d{1,2}[\/\-.]\d{1,2})/;
     while (i < n) {
       const c = text[i];
       if (q) {
-        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i += 2; continue; } q = false; i++; continue; }
+        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i += 2; continue; } if (NEWREC.test(f)) { recover(); continue; } q = false; i++; continue; }
         f += c; i++; continue;
       }
       if (c === '"' && f.trim() === '') { q = true; f = ''; i++; continue; }
       if (c === delim) { row.push(f); f = ''; i++; continue; }
-      if (c === '\r' || c === '\n') { row.push(f); rows.push(row); row = []; f = ''; i += c === '\r' && text[i + 1] === '\n' ? 2 : 1; continue; }
+      if (c === '\r' || c === '\n') { row.push(f); rows.push(row); row = []; f = ''; i += c === '\r' && text[i + 1] === '\n' ? 2 : 1; rowStart = i; continue; }
       f += c; i++;
     }
+    if (q) { recover(); const rest = parseCsv(text.slice(rowStart)); const off = lineOf(rowStart) - 1;
+      const out = finish(rows).concat(rest); return withBad(out, bad.concat((rest.bad || []).map((b) => Object.assign({}, b, { line: b.line + off })))); }
     if (f !== '' || row.length) { row.push(f); rows.push(row); }
-    return rows.map((r) => r.map((x) => x.trim())).filter((r) => r.some((x) => x !== ''));
+    return withBad(finish(rows), bad);
   }
+  const withBad = (arr, bad) => Object.defineProperty(arr, 'bad', { value: bad, enumerable: false });
+  const finish = (rows) => rows.map((r) => r.map((x) => x.trim())).filter((r) => r.some((x) => x !== ''));
 
   /* ---------- 値の読み取り ---------- */
   const nfkc = (s) => String(s == null ? '' : s).normalize('NFKC');
@@ -158,20 +173,48 @@
     return best;
   }
 
-  /** 割り当てに沿って明細行を取り出す。日付・金額が読めない行（前置き・会員情報・合計の行など）は除く */
+  /**
+   * 引用符なしの「1,234」で列が1つ増えた行を元に戻す。
+   * 想定より列が多く、金額の列が「1〜3桁」・次の列が「3桁」のときだけつなぐ（1,234,567 も可）
+   */
+  const HEADNUM = /^[-−▲△(]?[¥\\]?\d{1,3}(,\d{3})*$/, TAIL3 = /^\d{3}(円|\))?$/;
+  function rejoin(x, width, cols) {
+    if (!(width > 0) || x.length <= width) return null;
+    let y = x.slice(), done = false;
+    for (const col of cols.filter((c) => c >= 0).sort((a, b) => a - b)) {
+      while (y.length > width && HEADNUM.test(nfkc(y[col] || '').trim()) && TAIL3.test(nfkc(y[col + 1] || '').trim())) { y.splice(col, 2, y[col] + ',' + y[col + 1]); done = true; }
+    }
+    return done ? y : null;
+  }
+  const mode = (arr) => { const c = {}; let b = 0, bv = 0; for (const v of arr) { c[v] = (c[v] || 0) + 1; if (c[v] > b) { b = c[v]; bv = v; } } return bv; };
+  const looksDate = (s) => /\d{1,4}\s*[\/\-.年月]\s*\d{1,2}/.test(nfkc(s));
+  /**
+   * 割り当てに沿って明細行を取り出す。日付・金額が読めない行（前置き・会員情報・合計の行など）は除く。
+   * 明細らしいのに読めなかった行は out.skipped（{line, text}）に、つなぎ直した行の数は out.rejoined に入れる
+   */
   function extractRows(rows, map) {
-    const out = [];
+    const out = [], skipped = []; let rejoined = 0;
     const start = map.header >= 0 ? map.header + 1 : 0;
+    const width = map.header >= 0 && rows[map.header] ? rows[map.header].length : mode(rows.slice(start).filter((x) => parseDate(x[map.date])).map((x) => x.length));
+    const raw = (x) => x.join(',');
     for (let r = start; r < rows.length; r++) {
-      const x = rows[r];
-      const date = parseDate(x[map.date]); if (!date) continue;
+      let x = rows[r];
+      const dcell = String(x[map.date] == null ? '' : x[map.date]).trim();
+      const date = parseDate(dcell);
+      if (!date) {
+        // 日付の欄が空・合計などの行は黙って除く。日付のつもりの値が読めなかった行だけ数える
+        if (dcell && !x.some((c) => isSummary(c)) && (map.header >= 0 || looksDate(dcell))) skipped.push({ line: r + 1, text: raw(x) });
+        continue;
+      }
+      const fixed = rejoin(x, width, [map.amount, map.alt]); if (fixed) { x = fixed; rejoined++; }
       let amount = parseAmount(x[map.amount]);
       if (amount === null && map.alt >= 0) amount = parseAmount(x[map.alt]);
-      if (amount === null) continue;
+      if (amount === null) { if (!x.some((c) => isSummary(c))) skipped.push({ line: r + 1, text: raw(x) }); continue; }
       const merchant = String(map.merchant >= 0 ? x[map.merchant] || '' : '').replace(/\s+/g, ' ').trim();
       if (isSummary(merchant)) continue;
       out.push({ date, merchant: merchant || '（店名なし）', amount });
     }
+    Object.defineProperty(out, 'skipped', { value: skipped, enumerable: false }); Object.defineProperty(out, 'rejoined', { value: rejoined, enumerable: false });
     return out;
   }
 
@@ -180,7 +223,9 @@
     const table = parseCsv(text);
     const map = mapOverride ? Object.assign({ header: -1, alt: -1 }, mapOverride, { ok: true, method: 'manual' }) : detectColumns(table);
     const rows = map.date >= 0 && map.amount >= 0 ? extractRows(table, map) : [];
-    return { table, map, rows, total: rows.reduce((s, r) => s + r.amount, 0), ok: map.ok && rows.length > 0 };
+    // 読めなかった行: 引用符の閉じ忘れ＋日付・金額が読めない明細行（line はファイルの行番号ではなく表の行番号の目安）
+    const skipped = (table.bad || []).concat(rows.skipped || []);
+    return { table, map, rows, skipped, rejoined: rows.rejoined || 0, total: rows.reduce((s, r) => s + r.amount, 0), ok: map.ok && rows.length > 0 };
   }
 
   /* ---------- 請求月 ---------- */
@@ -191,8 +236,21 @@
    * 明細の最後の利用日より後に「金額の確定日」が来る、最初の引き落とし。明細が無ければ今日から見て
    * 「確定済みでまだ引き落とされていない請求」→ 無ければ次の請求。
    */
+  /**
+   * 利用日の範囲。中央の日付から62日より離れた行は「外れ」（打ち間違い・別の年など）として分ける。
+   * 戻り値 { inliers, outliers }（どちらも行の配列。外れしかないときは全部 inliers）
+   */
+  function dateRange(rows) {
+    const list = (rows || []).filter((r) => r && r.date);
+    if (list.length < 3) return { inliers: list, outliers: [] };
+    const ds = list.map((r) => r.date).sort(), med = ds[Math.floor((ds.length - 1) / 2)];
+    const dn = (s) => { const p = L.parse(s); return Date.UTC(p.y, p.m - 1, p.d) / 864e5; };
+    const m0 = dn(med), inliers = [], outliers = [];
+    for (const r of list) (Math.abs(dn(r.date) - m0) > 62 ? outliers : inliers).push(r);
+    return outliers.length * 2 >= list.length ? { inliers: list, outliers: [] } : { inliers, outliers };
+  }
   function guessBillMonth(card, rows, todayStr) {
-    const dates = (rows || []).map((r) => r.date).filter(Boolean).sort();
+    const dates = dateRange(rows).inliers.map((r) => r.date).sort();
     if (dates.length) {
       const last = dates[dates.length - 1];
       const b = cardBills(card, L.addDays(last, -1), L.addDays(last, 100)).find((x) => x.fix >= last);
@@ -342,7 +400,7 @@
       variable: false, fixDay: null, memo: '明細CSVから登録（' + s.merchant + '）', active: true, importKey: s.key, createdAt: todayStr };
   }
 
-  return { decodeBytes, parseCsv, parseDate, parseAmount, detectColumns, extractRows, analyze, isSummary, matchHead,
+  return { decodeBytes, parseCsv, parseDate, parseAmount, detectColumns, extractRows, analyze, isSummary, matchHead, dateRange,
     guessBillMonth, billMonthOptions, merchantKey, rowKey, mergeImport, importedRows, previewMerge, merchantTotals, cleanImports,
     knownSub, similarName, suggestRecurring, paymentFromSuggestion, KNOWN };
 });

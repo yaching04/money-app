@@ -540,7 +540,7 @@ t('v5.5 入力待ち・通知は発生する月だけ／仮は直近3回平均�
   assert.deepStrictEqual(ev.map((e) => [e.date, e.fixDate, e.amount, e.source]), [['2026-01-20', '2026-01-10', 5000, 'initial'], ['2026-03-20', '2026-03-10', 5000, 'initial'], ['2026-05-20', '2026-05-10', 5000, 'initial']]);
   assert.deepStrictEqual(L.computePending(s, '2026-02-15').map((e) => e.month), ['2026-01']);   // 2月は発生しないので入力待ちなし
   assert.deepStrictEqual(L.computePending(s, '2026-03-01').map((e) => e.month), ['2026-01']);   // 3月分は確定日(3/10)前
-  assert.deepStrictEqual(L.computePending(s, '2026-03-12').map((e) => [e.month, e.status]), [['2026-03', 'awaiting']]);
+  assert.deepStrictEqual(L.computePending(s, '2026-03-12').map((e) => [e.month, e.status]), [['2026-01', 'overdue'], ['2026-03', 'awaiting']]);   // v5.9: 残高の日付より後の仮は45日を過ぎても出す
   assert.deepStrictEqual(L.computeReminders(s, '2026-01-11', 60).map((r) => r.date), ['2026-03-10']);
   L.setActual(s, 'pay', 'w', '2026-01', 6000); L.setActual(s, 'pay', 'w', '2026-03', 7000);
   ev = L.genEvents(s, '2026-04-30', '2026-05-31');

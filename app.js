@@ -6,14 +6,15 @@
   const $ = (s, r) => (r || document).querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
-  const yen = (n) => (n < 0 ? '−' : '') + '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP');
-  const yenAbs = (n) => '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP');
-  const short = (n) => { const a = Math.abs(n); const s = a >= 10000 ? (Math.round(a / 1000) / 10).toString().replace(/\.0$/, '') + '万' : Math.round(a).toString(); return (n < 0 ? '−' : '') + s; };
+  const fin = (n) => { n = Number(n); return isFinite(n) ? n : 0; };   // 壊れたデータでも「¥NaN」を出さない
+  const yen = (n) => { n = fin(n); return (n < 0 ? '−' : '') + '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP'); };
+  const yenAbs = (n) => '¥' + Math.abs(Math.round(fin(n))).toLocaleString('ja-JP');
+  const short = (n) => { n = fin(n); const a = Math.abs(n); const s = a >= 10000 ? (Math.round(a / 1000) / 10).toString().replace(/\.0$/, '') + '万' : Math.round(a).toString(); return (n < 0 ? '−' : '') + s; };
   const WD = ['日', '月', '火', '水', '木', '金', '土'];
   const dow = (s) => { const p = L.parse(s); return WD[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()]; };
-  const md = (s) => { const p = L.parse(s); return p.m + '/' + p.d + '(' + dow(s) + ')'; };
-  const ymd = (s) => { const p = L.parse(s); return p.y + '年' + p.m + '月' + p.d + '日(' + dow(s) + ')'; };
-  const ymLabel = (k) => { const [y, m] = k.split('-'); return y + '年' + Number(m) + '月'; };
+  const md = (s) => { if (!L.isDateStr(s)) return '—'; const p = L.parse(s); return p.m + '/' + p.d + '(' + dow(s) + ')'; };
+  const ymd = (s) => { if (!L.isDateStr(s)) return '—'; const p = L.parse(s); return p.y + '年' + p.m + '月' + p.d + '日(' + dow(s) + ')'; };
+  const ymLabel = (k) => { if (!/^\d{4}-\d{2}/.test(String(k))) return '—'; const [y, m] = String(k).split('-'); return y + '年' + Number(m) + '月'; };
 
   /* ---------- 状態 ---------- */
   function load() { try { return L.migrate(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return L.migrate(null); } }
@@ -460,7 +461,14 @@
   const TITLES = { home: '口座残高の見込み', pay: '毎月の支払い', acct: 'カード・口座・収入', sum: '支出の集計', data: '設定・バックアップ' };
   function render() {
     $('#title').textContent = TITLES[tab];
-    $('#main').innerHTML = { home: renderHome, pay: renderPay, acct: renderAcct, sum: renderSummary, data: renderData }[tab]();
+    // 万一データが壊れていても画面が固まらないように。設定タブ（バックアップ・復元・全削除）は開けるようにする
+    let html;
+    try { html = { home: renderHome, pay: renderPay, acct: renderAcct, sum: renderSummary, data: renderData }[tab](); }
+    catch (err) {
+      console.warn('render failed', err);
+      html = `<div class="card"><h2>この画面を表示できませんでした</h2><p class="hint">保存されているデータの一部が読み取れない形になっている可能性があります。「設定」からバックアップを保存するか、別のバックアップから復元してください。</p>${tab === 'data' ? '' : '<button class="btn sec" data-tab="data">設定を開く</button>'}</div>`;
+    }
+    $('#main').innerHTML = html;
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   }
   function go(t) { tab = t; render(); window.scrollTo(0, 0); }
@@ -748,8 +756,10 @@
   }
 
   /* ---------- 実績（確定額）の入力 ---------- */
+  const NEG_MSG = 'マイナスの金額は入力できません。返金などで請求がなかった月は 0 を入力してください';
   function setActual(kind, id, month, amount) {
-    if (!isFinite(amount) || amount < 0) { toast('金額を入力してください'); return false; }
+    if (!isFinite(amount)) { toast('金額を入力してください'); return false; }
+    if (amount < 0) { toast(NEG_MSG); return false; }
     L.setActual(state, kind, id, month, amount); save(); return true;
   }
   /** 1回分の実績入力（予定の行タップ用） */
@@ -763,7 +773,7 @@
       saveLabel: '金額を確定する', deleteLabel: '実績を取り消す', doneMsg: '確定額を保存しました',
       body: `<p class="hint"><b>${esc(label)}</b>${e ? '<br>' + (e.kind === 'income' ? '入金日 ' : '引き落とし日 ') + md(e.date) + '・請求額がわかる日 ' + md(e.fixDate) : ''}<br>現在: ${e ? (e.confirmed ? '' : '仮 ') + yenAbs(e.amount) + '（' + srcText(e) + '）' : '-'}</p>` +
         field('amount', ymLabel(month) + '分の確定金額（円）', `<input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${e && e.confirmed ? e.amount : ''}" placeholder="${cur}" autofocus><p class="cmp" id="cmp" hidden></p>`, '入力すると仮の金額が実績に置き換わり、今後の平均（直近3回）にも使われます。'),
-      onSubmit(fd) { const v = num(fd, 'amount'); if (!isFinite(v) || v < 0) return '金額を入力してください'; L.setActual(state, kind, id, month, v); },
+      onSubmit(fd) { const v = num(fd, 'amount'); if (!isFinite(v) || fd.get('amount') === '') return '金額を入力してください'; if (v < 0) return NEG_MSG; L.setActual(state, kind, id, month, v); },
       delMsg: '入力した確定額を取り消して、仮の金額に戻します。',
       onDelete: e && e.source === 'actual' ? () => { L.removeActual(state, kind, id, month); } : null,
       setup(f) { bindCmp($('#amount', f), $('#cmp', f), () => ({ kind, id, month })); },
@@ -842,7 +852,8 @@
         <div class="csv-prev"><small>1件目の読み取り結果</small>${r0 ? `<div class="row"><div class="l"><b>${esc(r0.merchant)}</b><small>${md(r0.date)}</small></div><div class="r">${csvAmt(r0.amount)}</div></div><small>全${pv.rows.length}件・合計 ${yenAbs(pv.total)}</small>` : '<div class="empty">この割り当てでは明細を読み取れません</div>'}</div>
         <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="card">戻る</button><button type="button" class="btn" data-act="csv-map-ok" ${r0 ? '' : 'disabled'}>この割り当てで進む</button></div>`;
     } else if (csv.step === 'preview') {
-      const rows = csv.an.rows, total = csv.an.total, ds = rows.map((r) => r.date).sort();
+      const rows = csv.an.rows, total = csv.an.total, dr = CI.dateRange(rows), ds = dr.inliers.map((r) => r.date).sort();
+      const skipped = csv.an.skipped || [], rejoined = csv.an.rejoined || 0;
       const refunds = rows.filter((r) => r.amount < 0);
       const guess = CI.guessBillMonth(card, rows, todayStr());
       const months = CI.billMonthOptions(guess, 4, 2); if (!months.includes(csv.month)) months.push(csv.month); months.sort();
@@ -852,9 +863,12 @@
       h = `<h2>明細の確認</h2>${csvSteps(2)}
         <p class="hint">${esc(card.name)}・${esc(csv.file)}${csv.encoding === 'shift_jis' ? '（Shift_JIS）' : ''}</p>
         <div class="csv-sum"><small>${rows.length}件の合計${refunds.length ? `（返金${refunds.length}件を含む）` : ''}</small><b class="${total > 0 ? 'neg-t' : total < 0 ? 'pos-t' : ''}">${total < 0 ? '+' : total > 0 ? '−' : ''}${yenAbs(total)}</b><small>利用日 ${md(ds[0])} 〜 ${md(ds[ds.length - 1])}</small></div>
+        ${dr.outliers.length ? `<p class="hint csv-warn">ほかの明細と日付が大きく離れた行が${dr.outliers.length}件あります（${dr.outliers.slice(0, 3).map((r) => esc(r.date.replace(/-/g, '/'))).join('・')}${dr.outliers.length > 3 ? ' ほか' : ''}）。請求月の推定には使っていません。日付が正しいか確認してください。</p>` : ''}
+        ${skipped.length ? `<details class="csv-skip"><summary>読めなかった行${skipped.length}件（日付か金額を読み取れないため除外）</summary><ul class="items">${skipped.slice(0, 10).map((x) => `<li>・${x.line ? x.line + '行目：' : ''}${esc(String(x.text).slice(0, 40))}</li>`).join('')}${skipped.length > 10 ? `<li>ほか${skipped.length - 10}件</li>` : ''}</ul></details>` : ''}
+        ${rejoined ? `<p class="hint">引用符なしでカンマ付きの金額（例：1,234）を${rejoined}件、1つの金額として読みました。</p>` : ''}
         ${field('csvMonth', 'どの月の請求ですか（引き落としの月）', `<select id="csvMonth">${months.map((m) => opt(m, billOpt(card, m) + (m === guess ? '・推定' : ''), m === csv.month)).join('')}</select>`, 'カードの「請求額がわかる日」「引き落とし日」と、明細の最後の利用日から推定しています。違うときは変更してください。')}
         ${had ? `<p class="hint">この月は前にも読み込んでいます（${had}件）。同じ明細は二重に数えません：合わせて ${pm.count}件・${yenAbs(pm.total)}</p>` : ''}
-        <div class="csv-rows">${rows.slice(0, MAX).map((r) => `<div class="row"><div class="l"><b>${esc(r.merchant)}${sgKeys.has(CI.merchantKey(r.merchant)) ? '<span class="tag sug">毎月？</span>' : ''}</b><small>${md(r.date)}</small></div><div class="r">${csvAmt(r.amount)}</div></div>`).join('')}${rows.length > MAX ? `<p class="hint">ほか${rows.length - MAX}件</p>` : ''}</div>
+        <div class="csv-rows">${rows.slice(0, MAX).map((r) => `<div class="row"><div class="l"><b>${esc(r.merchant)}${sgKeys.has(CI.merchantKey(r.merchant)) ? '<span class="tag sug">毎月？</span>' : ''}</b><small>${md(r.date)}${dr.outliers.includes(r) ? '<span class="tag">日付？</span>' : ''}</small></div><div class="r">${csvAmt(r.amount)}</div></div>`).join('')}${rows.length > MAX ? `<p class="hint">ほか${rows.length - MAX}件</p>` : ''}</div>
         <button type="button" class="lnk" data-act="csv-map">列の割り当てを変更</button>
         <div class="btns"><button type="button" class="btn sec" data-act="csv-back" data-to="card">戻る</button><button type="button" class="btn" data-act="csv-next">次へ</button></div>`;
     } else if (csv.step === 'actions') {
@@ -864,8 +878,8 @@
       const cmp = cmpInner('card', card.id, csv.month, pm.total);
       const why = (s) => s.varies ? (s.reason === 'known' ? '毎月ありそうな支払い（金額は変動）' : '前の月にも出ている・毎月ありそうな支払い（金額は変動）') : { history: '前の月にも同じくらいの金額', known: '定額サービスの名前に一致', both: '前の月にも同じくらいの金額・定額サービス' }[s.reason];
       h = `<h2>登録する内容</h2>${csvSteps(3)}
-        <div class="csv-act"><label class="f chk"><input type="checkbox" id="caActual" ${pm.total >= 0 ? 'checked' : 'disabled'}> <span>合計 <b>${yenAbs(pm.total)}</b> を <b>${ymLabel(csv.month)}</b> の確定額にする</span></label>
-          <small>${esc(card.name)}の請求額として記録します（「実績」に手で入力するのと同じ）。${cur ? `今の確定額 ${yenAbs(cur.amount)} を置き換えます。` : ''}${pm.total < 0 ? '合計がマイナスのため確定額にできません。' : ''}</small>
+        <div class="csv-act"><label class="f chk"><input type="checkbox" id="caActual" ${pm.total >= 0 ? 'checked' : 'disabled'}> <span>合計 <b>${pm.total < 0 ? '+' : ''}${yenAbs(pm.total)}</b> を <b>${ymLabel(csv.month)}</b> の確定額にする</span></label>
+          <small>${esc(card.name)}の請求額として記録します（「実績」に手で入力するのと同じ）。${cur ? `今の確定額 ${yenAbs(cur.amount)} を置き換えます。` : ''}${pm.total < 0 ? `返金のほうが多く、合計が +${yenAbs(pm.total)}（戻ってくる金額）のため確定額にはできません。` : ''}</small>
           ${cmp ? `<p class="cmp">${cmp}</p>` : ''}</div>
         <h3 class="csv-h">毎月の支払いとして登録</h3>
         ${sugg.length ? sugg.map((s, i) => `<div class="csv-act"><label class="f chk"><input type="checkbox" class="caSug" data-i="${i}" ${s.strong ? 'checked' : ''}> <span><b>${esc(s.name)}</b> ${yenAbs(s.amount)}／毎月</span></label><small>${esc(s.merchant)}・${why(s)}</small></div>`).join('')
@@ -894,6 +908,7 @@
     catch (e) { return csvFail('ファイルを開けませんでした。'); }
     const dec = CI.decodeBytes(buf), an = CI.analyze(dec.text);
     if (!an.table.length) return csvFail('CSVの中身が見つかりませんでした。カード会社の「利用明細」のCSVファイルか確認してください。');
+    if (!an.ok && !an.table.some((r) => r.some((c) => CI.parseDate(c))) && an.table.some((r) => r.some((c) => CI.matchHead('date', c) >= 0) && r.some((c) => CI.matchHead('amount', c) >= 0))) return csvFail('明細が0件でした。日付の入った明細の行が見つかりません。見出しだけのファイルや、まだ利用のない月のCSVではないか確認してください。');
     Object.assign(csv, { file: file.name || 'CSV', encoding: dec.encoding, text: dec.text, an });
     if (!an.ok) { csv.step = 'map'; if (an.map.date < 0) Object.assign(an.map, { date: 0, merchant: 1, amount: 2, header: -1, alt: -1 }); drawCsv(); return; }
     csv.month = CI.guessBillMonth(csvCard(), an.rows, todayStr());
@@ -955,7 +970,7 @@
   async function resetAll() {
     if (!(await askConfirm({ title: 'すべてのデータを削除', message: '口座・カード・支払い・収入・実績がすべて消えます。\n先に「バックアップを保存」しておくことをおすすめします。', okLabel: '次へ' }))) return;
     if (!(await askConfirm({ title: '最後の確認', message: '本当にすべて削除しますか？この操作は元に戻せません。', okLabel: 'すべて削除する' }))) return;
-    state = L.migrate(null); save(); render(); toast('すべて削除しました');
+    state = L.migrate(null); try { localStorage.removeItem(LASTBK_KEY); } catch (_) {} save(); render(); toast('すべて削除しました');
   }
   const LASTBK_KEY = 'money-app-last-backup';   // 復元でデータを置き換えても消えないよう、別のキーに保存
   const lastBackup = () => { try { return localStorage.getItem(LASTBK_KEY); } catch (_) { return null; } };
@@ -983,6 +998,13 @@
       if (!v.ok) { askConfirm({ title: '読み込めませんでした', message: v.error, okLabel: 'OK', noCancel: true, danger: false }); return; }
       const c = v.counts, when = v.exportedAt ? new Date(v.exportedAt) : null;
       const whenTxt = when && !isNaN(when) ? `${when.getFullYear()}年${when.getMonth() + 1}月${when.getDate()}日に保存したバックアップ\n` : '';
+      if (v.empty) {
+        // 空のバックアップ（口座・カード・支払い・収入が0件）で復元すると、今のデータがすべて消える。2段階で確認
+        askConfirm({ title: '空のバックアップです', message: `${whenTxt}このファイルには口座・カード・支払い・収入が1件も入っていません。\n\n復元すると今のデータはすべて消え、空の状態になります。`, okLabel: '次へ' })
+          .then((ok) => ok && askConfirm({ title: '最後の確認', message: '今のデータをすべて消して、空の状態にしますか？この操作は元に戻せません。', okLabel: '空にして復元する' }))
+          .then((ok) => { if (!ok) return; state = v.state; sel.target = null; sel.vm = null; save(); render(); toast('復元しました（空のデータ）'); });
+        return;
+      }
       askConfirm({ title: 'バックアップから復元', message: `${whenTxt}口座${c.accounts}・カード${c.cards}・支払い${c.payments}・収入${c.incomes}・実績${c.actuals}${c.imports ? '・明細' + c.imports + 'か月分' : ''}\n\n今のデータは上書きされます。${v.oldFormat ? '\n（古い形式のデータは自動で変換されます）' : ''}`, okLabel: '上書きして復元' })
         .then((ok) => { if (!ok) return; state = v.state; sel.target = null; sel.vm = null; save(); render(); toast('復元しました'); });
     };
@@ -1064,7 +1086,9 @@
       }
       case 'confirm-actual': {
         const row = t.closest('.inb-row'), inp = $('input', row);
+        if (inp.value === '' && inp.validity && inp.validity.badInput) { toast('数字で入力してください'); inp.focus(); break; }
         if (inp.value === '') { toast('金額を入力してください'); inp.focus(); break; }
+        if (Number(inp.value) < 0) { toast(NEG_MSG); inp.focus(); break; }
         if (setActual(row.dataset.kind, row.dataset.id, row.dataset.month, Number(inp.value))) { render(); toast('金額を確定しました'); }
         break;
       }
@@ -1133,6 +1157,15 @@
   main.addEventListener('pointerup', (e) => endDrag(e, false));
   main.addEventListener('pointercancel', (e) => endDrag(e, true));
 
+  // iPhone: キーボードの表示中は下のタブバーを隠し、閉じたら画面のずれ（固定要素が浮いたまま）を戻す
+  const isTyping = (el) => el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file|range|color)$/.test(el.type)));
+  document.addEventListener('focusin', (e) => { if (isTyping(e.target)) document.body.classList.add('typing'); });
+  document.addEventListener('focusout', () => setTimeout(() => {
+    if (isTyping(document.activeElement)) return;
+    document.body.classList.remove('typing');
+    if (window.scrollX) window.scrollTo(0, window.scrollY);
+  }, 60));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (!isTyping(document.activeElement)) { document.body.classList.remove('typing'); if (window.scrollX) window.scrollTo(0, window.scrollY); } });
   render();
   syncNotify();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

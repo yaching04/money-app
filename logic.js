@@ -10,7 +10,9 @@
   const SCHEMA_VERSION = 2;
   const pad = (n) => String(n).padStart(2, '0');
   const fmt = (y, m, d) => String(y).padStart(4, '0') + '-' + pad(m) + '-' + pad(d);
-  const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d }; };
+  const parse = (s) => { const [y, m, d] = String(s == null ? '' : s).split('-').map(Number); return { y, m, d }; };
+  /** 実在する 'YYYY-MM-DD' か */
+  const isDateStr = (s) => { if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false; const p = parse(s); return p.m >= 1 && p.m <= 12 && p.d >= 1 && p.d <= daysInMonth(p.y, p.m); };
   const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate(); // m は 1〜12
   // 31日指定でも30日/28日までの月は月末日に丸める
   /** 「月末」を表す日の値（数値のまま保存。clampDay で各月の最終日になる。29〜31日も同様に月末に丸める） */
@@ -24,8 +26,8 @@
   const today = () => { const t = new Date(); return fmt(t.getFullYear(), t.getMonth() + 1, t.getDate()); };
   const endOfMonth = (s) => { const p = parse(s); return fmt(p.y, p.m, daysInMonth(p.y, p.m)); };
   const addMonthsEnd = (s, n) => { const p = parse(s); const t = new Date(Date.UTC(p.y, p.m - 1 + n, 1)); return endOfMonth(fmt(t.getUTCFullYear(), t.getUTCMonth() + 1, 1)); };
-  const monthKey = (s) => s.slice(0, 7);
-  const addMonthKey = (k, n) => { const [y, m] = k.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1)); return t.getUTCFullYear() + '-' + pad(t.getUTCMonth() + 1); };
+  const monthKey = (s) => String(s == null ? '' : s).slice(0, 7);
+  const addMonthKey = (k, n) => { const [y, m] = String(k).split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1)); return t.getUTCFullYear() + '-' + pad(t.getUTCMonth() + 1); };
   const monthFirst = (k) => k + '-01';
   const monthLast = (k) => endOfMonth(k + '-01');
 
@@ -79,7 +81,7 @@
   /** 繰り返しの表示: 毎月25日 / 毎年4月27日 / 6か月ごと・25日 / 2026/12/10、1回だけ（カード払いの1回だけは 2026/12） */
   function repeatLabel(it, day) {
     const t = repType(it), r = it.repeat || {}, dl = dayLabel(day) || '';
-    if (t === 'yearly') return '毎年' + Number(r.month) + '月' + (isEndDay(day) ? '末' : dl);
+    if (t === 'yearly') { const mo = Number(r.month); return '毎年' + mo + '月' + (isEndDay(day) || (mo >= 1 && mo <= 12 && Number(day) > daysInMonth(2000, mo)) ? '末' : dl); }   // 2月31日・4月31日などは「月末」
     if (t === 'every') return Number(r.n) + 'か月ごと・' + dl;
     if (t === 'once') { const p = r.date ? parse(r.date) : null; return p ? (it.cardId ? p.y + '/' + p.m : p.y + '/' + p.m + '/' + p.d) + '、1回だけ' : '1回だけ'; }
     return '毎月' + dl;
@@ -330,13 +332,17 @@
   }
 
   /* ---------- 金額入力待ち(インボックス)と通知 ---------- */
-  /** 確定日が今日以前で、まだ実績が入っていない変動項目（支払日が45日以内に過ぎたものも含む） */
+  /** 確定日が今日以前で、まだ実績が入っていない変動項目（口座の残高の日付より後に引き落とされたものはすべて。最長2年前まで） */
   function computePending(state, todayStr) {
     // 引き落とし(入金)日が口座の基準日（残高の日付）以前＝もう残高に反映済みのものは入力を求めない。
     // 項目の作成日より前の確定日も求めない。※残高を今日に更新しても、これからの引き落としの入力待ちは消えない
     const asOf = {}; for (const a of state.accounts) asOf[a.id] = a.asOf;
     const coll = { card: state.cards, pay: state.payments, inc: state.incomes };
-    return genEvents(state, addDays(todayStr, -45), addDays(todayStr, 62))
+    // 残高の日付が古い口座があれば、その日付から（＝残高に影響する仮の項目はすべて出す）。ただし最長2年前まで
+    let from = addDays(todayStr, -45);
+    for (const a of state.accounts) if (isDateStr(a.asOf) && a.asOf < from) from = a.asOf;
+    const limit = addDays(todayStr, -731); if (from < limit) from = limit;
+    return genEvents(state, from, addDays(todayStr, 62))
       .filter((e) => {
         if (!e.variable || e.confirmed || e.fixDate > todayStr) return false;
         const base = asOf[e.accountId];
@@ -382,11 +388,19 @@
       const totalNeg = pr.startBalance < 0;
       return { date: todayStr, balance: totalNeg ? pr.startBalance : Number(negAcc.balance), provisional: false, accountName: !totalNeg && multi ? negAcc.name : null, total: pr.startBalance };
     }
-    for (const r of pr.events) {
-      if (!r.negative) continue;
-      if (r.date > toIn) break;
-      const totalNeg = r.balance < 0;
-      return { date: r.date < todayStr ? todayStr : r.date, balance: totalNeg ? r.balance : r.accountBalance, provisional: !!r.uncertain, accountName: !totalNeg && multi ? r.accountName : null, total: r.balance, label: r.label };
+    // 金額は「その日の終わり」の残高（同じ日に複数の引き落とし・入金があっても、全部反映した後の金額）
+    const accBal = {}; for (const a of accs) accBal[a.id] = Number(a.balance || 0);
+    const evs = pr.events;
+    for (let i = 0; i < evs.length; i++) {
+      const date = evs[i].date; if (date > toIn) break;
+      let j = i, firstNeg = null;
+      for (; j < evs.length && evs[j].date === date; j++) { accBal[evs[j].accountId] = evs[j].accountBalance; if (evs[j].negative && !firstNeg) firstNeg = evs[j]; }
+      const last = evs[j - 1]; i = j - 1;
+      const total = last.balance;
+      let worst = null; for (const a of accs) if (accBal[a.id] < 0 && (!worst || accBal[a.id] < accBal[worst.id])) worst = a;
+      if (total >= 0 && !worst) continue;
+      const totalNeg = total < 0;
+      return { date: date < todayStr ? todayStr : date, balance: totalNeg ? total : accBal[worst.id], provisional: !!last.uncertain, accountName: !totalNeg && multi ? worst.name : null, total, label: (firstNeg || last).label };
     }
     return null;
   }
@@ -440,6 +454,7 @@
     const st = migrate(o);
     delete st.exportedAt; delete st.app;
     return { ok: true, state: st, exportedAt: typeof o.exportedAt === 'string' ? o.exportedAt : null, oldFormat: (Number(o.version) || 1) < SCHEMA_VERSION,
+      empty: !st.accounts.length && !st.cards.length && !st.payments.length && !st.incomes.length,
       counts: { accounts: st.accounts.length, cards: st.cards.length, payments: st.payments.length, incomes: st.incomes.length, actuals: Object.keys(st.actuals).length,
         imports: Object.values(st.imports).reduce((n, byM) => n + Object.keys(byM).length, 0) } };
   }
@@ -452,6 +467,51 @@
     return { days: d, remind: d > 30 };
   }
 
+  /* ---------- データの整え（壊れた・古い形式のバックアップでも画面が開けるように） ---------- */
+  const finite = (v, def) => { const n = Number(v); return v !== null && v !== '' && typeof v !== 'boolean' && isFinite(n) ? n : def; };
+  /** 'YYYY-MM-DD' / 'YYYY/M/D' / 'YYYY.M.D' / ISO 日時 → 'YYYY-MM-DD'。読めなければ null */
+  function normDate(v) {
+    if (typeof v !== 'string') return null;
+    const m = v.trim().match(/^(\d{4})[\-\/.](\d{1,2})[\-\/.](\d{1,2})/); if (!m) return null;
+    const ds = fmt(Number(m[1]), Number(m[2]), Number(m[3]));
+    return isDateStr(ds) ? ds : null;
+  }
+  const normDay = (v, def) => { const n = Math.round(finite(v, NaN)); return n === END_DAY ? END_DAY : n >= 1 && n <= 31 ? n : def; };
+  const str = (v, def) => (typeof v === 'string' ? v : v == null ? def : String(v));
+  function sanitizeRepeat(r) {
+    if (!r || typeof r !== 'object') return null;
+    if (r.type === 'yearly') { const mo = Math.round(finite(r.month, NaN)); return mo >= 1 && mo <= 12 ? { type: 'yearly', month: mo } : null; }
+    if (r.type === 'every') { const n = Math.round(finite(r.n, NaN)); const st = typeof r.start === 'string' && /^\d{4}-\d{2}/.test(r.start) ? r.start.slice(0, 7) : null; return n >= 1 && st ? { type: 'every', n: Math.min(n, 120), start: st } : null; }
+    if (r.type === 'once') { const d = normDate(r.date); return d ? { type: 'once', date: d } : null; }
+    return null;
+  }
+  /** 項目ごとに型を整える（その場で変更）。読めない日付は今日、数字でない金額は0、日にち不明は1日 */
+  function sanitize(s) {
+    const t = today();
+    const objs = (arr) => arr.filter((x) => x && typeof x === 'object' && !Array.isArray(x) && x.id != null);
+    for (const k of ['accounts', 'cards', 'payments', 'incomes']) s[k] = objs(s[k]);
+    for (const a of s.accounts) { a.id = String(a.id); a.name = str(a.name, '口座'); a.balance = Math.round(finite(a.balance, 0)); a.asOf = normDate(a.asOf) || t; }
+    for (const c of s.cards) {
+      c.id = String(c.id); c.name = str(c.name, 'カード'); c.withdrawDay = normDay(c.withdrawDay, 27); c.fixDay = normDay(c.fixDay, null);
+      if (c.accountId != null) c.accountId = String(c.accountId);
+    }
+    for (const p of s.payments.concat(s.incomes)) {
+      p.id = String(p.id); p.name = str(p.name, '（名前なし）'); p.amount = Math.max(0, Math.round(finite(p.amount, 0))); p.day = normDay(p.day, 1);
+      if (p.fixDay !== undefined) p.fixDay = normDay(p.fixDay, null);
+      if (p.repeat != null) p.repeat = sanitizeRepeat(p.repeat);
+      if (p.loan != null) { const st = p.loan && typeof p.loan.start === 'string' && /^\d{4}-\d{2}/.test(p.loan.start) ? p.loan.start.slice(0, 7) : null, n = Math.round(finite(p.loan && p.loan.count, NaN)); p.loan = st && n >= 1 ? { start: st, count: Math.min(n, 600) } : null; }
+      if (p.createdAt !== undefined) { const d = normDate(p.createdAt); if (d) p.createdAt = d; else delete p.createdAt; }
+      if (p.memo != null) p.memo = str(p.memo, '');
+      if (p.cardId != null) p.cardId = String(p.cardId);
+      if (p.accountId != null) p.accountId = String(p.accountId);
+    }
+    for (const k of Object.keys(s.actuals)) { const v = s.actuals[k]; if (!v || typeof v !== 'object' || !isFinite(finite(v.amount, NaN)) || !/^(card|pay|inc):.+:\d{4}-\d{2}$/.test(k)) delete s.actuals[k]; else v.amount = Math.round(Number(v.amount)); }
+    const st = s.settings;
+    if (!st || typeof st !== 'object' || Array.isArray(st)) s.settings = { targetDate: null, projAccount: 'all', viewMonth: null };
+    else { if (st.targetDate != null && !normDate(st.targetDate)) st.targetDate = null; if (typeof st.projAccount !== 'string') st.projAccount = 'all'; if (st.viewMonth != null && !/^\d{4}-\d{2}$/.test(String(st.viewMonth))) st.viewMonth = null; }
+    return s;
+  }
+
   /* ---------- データ形式の移行 ---------- */
   /** v1 / v2 / 不完全なデータを v2 形式に整える（元のオブジェクトは変更しない） */
   function migrate(o) {
@@ -460,7 +520,7 @@
     const s = { version: SCHEMA_VERSION, accounts: [], cards: [], payments: [], incomes: [], actuals: {}, settings: { targetDate: null, projAccount: 'all', viewMonth: null } };
     for (const k of ['accounts', 'cards', 'payments', 'incomes']) s[k] = Array.isArray(o[k]) ? o[k] : [];
     if (o.actuals && typeof o.actuals === 'object' && !Array.isArray(o.actuals)) s.actuals = o.actuals;
-    s.settings = Object.assign(s.settings, o.settings || {});
+    s.settings = Object.assign(s.settings, o.settings && typeof o.settings === 'object' && !Array.isArray(o.settings) ? o.settings : {});
     // v5.8 明細CSVの取り込み { cardId: { 'YYYY-MM': { at, rows: [[日付, 店名, 金額]] } } }。形の崩れた部分は捨てる
     s.imports = {};
     if (o.imports && typeof o.imports === 'object' && !Array.isArray(o.imports)) {
@@ -473,6 +533,7 @@
         }
       }
     }
+    sanitize(s);
     for (const c of s.cards) {
       if (c.fixDay == null) c.fixDay = null;
       // v1 のカードは請求額固定の挙動だったので変動なしに移行。v2 は未指定なら変動(既定)
@@ -483,7 +544,7 @@
     return s;
   }
 
-  return { SCHEMA_VERSION, END_DAY, isEndDay, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
+  return { SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
     repType, occursIn, itemDates, nextOccurrence, repeatLabel, loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
     computePending, computeReminders, migrate,

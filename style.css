@@ -5,7 +5,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,Bl
 .top{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 10px}
 .top h1{margin:0;font-size:16px}
 main{max-width:var(--w);margin:0 auto;padding:12px}
-.tabs{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:var(--w);bottom:0;z-index:6;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.tabs{position:fixed;left:0;right:0;margin:0 auto;transform:none;width:100%;max-width:var(--w);box-sizing:border-box;bottom:0;z-index:6;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 .tabs button{flex:1;border:0;background:none;padding:8px 2px 7px;font-size:13px;color:#334155;display:flex;flex-direction:column;align-items:center;gap:1px;font-family:inherit}
 .tabs button span{font-size:22px;line-height:1.1}
 .tabs button.on{color:var(--pri);font-weight:700}
@@ -388,3 +388,12 @@ dialog.cdlg{max-height:90vh;max-height:90dvh}
 .csv-help li{margin:0 0 8px}
 .tag.sug{margin:0 0 0 6px;background:#f1f5f9;color:#64748b;font-size:12px;font-weight:400}
 .csv-once{display:flex;align-items:center;gap:6px}
+
+/* v5.9: 横にはみ出さない（長い名前で画面が横に広がり、固定のタブバーがずれるのを防ぐ） */
+html,body{max-width:100%;overflow-x:hidden;overflow-x:clip}
+#main{min-width:0;overflow-wrap:anywhere}
+#main *{max-width:100%}
+#main .row>*,#main .l,#main .r{min-width:0}
+#main b,#main small,#main span,#main p,#main h2,#main h3{overflow-wrap:anywhere}
+body.typing .tabs,body.typing .fab{display:none}
+.hero-bar>*{min-width:0}.hero-bar select{flex:1 1 0;text-overflow:ellipsis}
