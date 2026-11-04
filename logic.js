@@ -604,7 +604,37 @@
     return s;
   }
 
-  return { SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, holidays, holidayName, nonBusiness, nextBusinessDay, shiftOn, shiftNote, lastOccurrence, dow, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
+  /* ---------- v6.0.2 グラフの縦軸の目盛り（ラベルが重複しない） ---------- */
+  // 1・2・5 × 10^n の区切りのよい目盛り。ラベルは目盛り幅に合わせて小数を増やす（例 30万／29.95万／29.9万）。
+  // それでも隣り合うラベルが同じになるときは上端と下端だけにする。
+  function axisLabel(v, dec) {
+    if (!isFinite(v)) v = 0;
+    const a = Math.abs(v); let s;
+    const trim = (x) => x.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+    if (a >= 1e8) { const d = Math.min(8, dec + 4); s = trim((Math.round(a / 1e8 * 10 ** d) / 10 ** d).toFixed(d)) + '億'; }
+    else if (a >= 10000) s = trim((Math.round(a / 10000 * 10 ** dec) / 10 ** dec).toFixed(dec)) + '万';
+    else s = String(Math.round(a));
+    return (v < 0 && s !== '0' ? '−' : '') + s;
+  }
+  function axisTicks(lo, hi) {
+    lo = Number(lo); hi = Number(hi);
+    if (!isFinite(lo) || !isFinite(hi)) return [];
+    if (hi < lo) { const t = lo; lo = hi; hi = t; }
+    if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+    const raw = (hi - lo) / 3.5, mag = Math.max(1, Math.pow(10, Math.floor(Math.log10(raw)))), f = raw / mag;
+    let step = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag);
+    const gen = (st) => { const r = []; for (let k = Math.ceil(lo / st - 1e-9); k * st <= hi + 1e-9 && r.length < 50; k++) r.push(Math.round(k * st)); return r; };
+    let vals = gen(step);
+    // 目盛りが3本未満なら1段細かく（10→5→2→1）
+    for (let i = 0; i < 3 && vals.length < 3 && step > 1; i++) { const m = Math.pow(10, Math.floor(Math.log10(step) + 1e-9)), g = Math.round(step / m); step = Math.max(1, g === 1 ? m / 2 : g === 2 ? m : g === 5 ? 2 * m : 5 * m); vals = gen(step); }
+    const dec = Math.min(4, Math.max(0, Math.ceil(-Math.log10(step / 10000) - 1e-9)));
+    let out = vals.map((v) => ({ v, label: axisLabel(v, dec) }));
+    const dup = out.some((t, i) => i && t.label === out[i - 1].label);
+    if (dup && out.length > 1) { out = [out[0], out[out.length - 1]]; if (out[0].label === out[1].label) out = [out[1]]; }
+    return out;
+  }
+
+  return { axisTicks, axisLabel, SCHEMA_VERSION, END_DAY, isEndDay, isDateStr, normDate, holidays, holidayName, nonBusiness, nextBusinessDay, shiftOn, shiftNote, lastOccurrence, dow, dayLabel, pad, fmt, parse, daysInMonth, clampDay, dayNum, addDays, today, endOfMonth, addMonthsEnd, monthKey, addMonthKey, monthFirst, monthLast,
     repType, occursIn, itemDates, nextOccurrence, repeatLabel, loanIndex, payAmountIn, loanInfo, loanStartForPaid, setBalance,
     monthlyDates, confirmDate, actualKey, history, provisional, amountFor, setActual, removeActual, genEvents, project, dailySeries, monthEvents, monthlySummary,
     computePending, computeReminders, migrate,

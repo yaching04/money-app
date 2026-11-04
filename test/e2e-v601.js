@@ -57,7 +57,7 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   await tab('pay'); await clickIn('[data-act=add-pay]');
   ck('支払いの追加: 名前 → 変動 → 金額の順 [' + (await order()) + ']', (await order()) === 'name,variable,amount');
   await p.type('#name', '電気代'); await p.click('#variable'); await sleep(150);
-  { const lb = await txt('#amtLabel'); ck('変動にすると直下の金額欄の見出しが変わる [' + lb + ']', /^(前回の引き落とし（\d+\/\d+）の金額|目安の金額)/.test(lb)); }
+  { const lb = await txt('#amtLabel'); ck('変動にすると直下の金額欄の見出しが変わる [' + lb + ']', /^(前回の引き落とし(（\d+\/\d+）)?の金額|目安の金額)/.test(lb)); }
   await shot('payment-form');
   await p.click('#dlg [data-x=cancel]'); await sleep(300);
   await tab('acct'); await clickIn('[data-act=add-income]');

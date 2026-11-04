@@ -94,12 +94,6 @@
   }
 
   /* ---------- チャート（SVG・外部ライブラリなし） ---------- */
-  // 1・2・5 × 10^n の区切りのよい目盛り（例：10万刻み）
-  function niceTicks(lo, hi) {
-    const raw = (hi - lo) / 3.5 || 1, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
-    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
-    const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v)); return out;
-  }
   function chartGeo(ds, bars) {
     const W = 360, padL = bars ? 34 : 48, padR = 8, top = 24, hL = bars ? 0 : 150, gap = 0, hB = bars ? 140 : 0, bot = 22;
     const n = ds.days.length, cw = (W - padL - padR) / n, H = top + hL + gap + hB + bot;
@@ -137,7 +131,7 @@
     // 週末の薄い背景
     ds.days.forEach((d, i) => { const w = new Date(d.date + 'T00:00:00Z').getUTCDay(); if (w === 0 || w === 6) s += `<rect x="${padL + i * cw}" y="${top}" width="${cw}" height="${hL + gap + hB}" fill="${w === 0 ? '#fef2f2' : '#eff6ff'}" opacity=".55"/>`; });
     // 横グリッド
-    if (!bars) niceTicks(lo, hi).forEach((v) => { if (v === 0 && lo < 0) return; const y = Y(v); s += `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="#e2e8f0"/><text x="${padL - 4}" y="${y + 4}" text-anchor="end" class="cs-t">${short(v)}</text>`; });
+    if (!bars) L.axisTicks(lo, hi).forEach(({ v, label }) => { if (v === 0 && lo < 0) return; const y = Y(v); s += `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="#e2e8f0"/><text x="${padL - 4}" y="${y + 4}" text-anchor="end" class="cs-t">${esc(label)}</text>`; });
     if (!bars && lo < 0 && hi > 0) s += `<line x1="${padL}" x2="${W - padR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#dc2626" stroke-dasharray="3 3"/><text x="${padL - 4}" y="${Y(0) + 4}" text-anchor="end" class="cs-t" fill="#dc2626">0</text>`;
     // 今日・指定日
     const mark = (date, color, label, dash) => { const i = ds.days.findIndex((d) => d.date === date); if (i < 0) return ''; return `<line x1="${X(i)}" x2="${X(i)}" y1="${top}" y2="${top + hL + gap + hB}" stroke="${color}" stroke-width="1.5" ${dash ? 'stroke-dasharray="2 3"' : ''}/><text x="${X(i) > W - 28 ? W - 2 : X(i)}" y="${top - 8}" text-anchor="${X(i) > W - 28 ? 'end' : 'middle'}" class="cs-t" fill="${color}">${label}</text>`; };
@@ -624,6 +618,12 @@
     const it = { repeat: rep, day: once ? L.parse(rep.date).d : day(fd, 'day') };
     return L.lastOccurrence(state, it, todayStr());
   }
+  // v6.0.2: 日付（引き落とし日／入金日・1回だけの日付・繰り返し設定）がまだ決まっていないか
+  function formDatePending(f) {
+    const fd = new FormData(f), rep = readRepeat(fd, false);
+    if (typeof rep === 'string') return true;
+    return rep && rep.type === 'once' ? !fd.get('repDate') : !f.day.value;
+  }
   const mdPlain = (s) => { const p = L.parse(s); return p.m + '/' + p.d; };
   function needAccount() { if (!state.accounts.length) { toast('先に口座を登録してください'); return true; } return false; }
 
@@ -697,12 +697,12 @@
       body: field('ptype', '種類', `<select id="ptype" name="ptype">${opt('normal', '通常の支払い（サブスク・家賃など）', !(p && p.loan))}${opt('loan', 'ローン（回数が決まった分割払い）', !!(p && p.loan))}</select>`) +
         field('name', '名前・サイト／サービス名', `<input id="name" name="name" required maxlength="60" value="${esc(p ? p.name : '')}" placeholder="例：動画配信サービス">`) +
         `<div id="varWrap" class="f chk"><label><input type="checkbox" name="variable" id="variable" ${p && p.variable ? 'checked' : ''}> 変動（毎月金額が変わる：電気代など）</label></div>` +
-        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${p ? p.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${p ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
         field('cardId', '支払い方法（カードを選択）', `<select id="cardId" name="cardId">${state.cards.map((c) => opt(c.id, 'カード：' + c.name, c.id === curCard)).join('')}${opt('', '口座から直接引き落とし', curCard === '')}</select>`, state.cards.length ? '' : 'カードが未登録です。先に「カード・口座」タブで追加すると選べます。') +
         `<div id="accWrap">${field('accountId', '引き落とし口座', `<select id="accountId" name="accountId">${acctOptions(p ? p.accountId : state.accounts[0].id)}</select>`)}</div>` +
         repeatFields(p && !p.loan ? p : null) +
         `<div id="dayWrap">${field('day', '引き落とし日', dayInput('day', p && !p.cardId ? p.day : ''), DAYHINT)}</div>` +
         `<div id="cardDayNote" class="guide" hidden></div>` +
+        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${p ? p.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${p ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
         `<div id="fixWrap">${field('fixDay', '請求額がわかる日（明細の確定日・毎月・任意）', dayInput('fixDay', p ? p.fixDay : '', false), '請求額がわかる日。空欄なら引き落とし日当日。この日の朝8:00に入力をお知らせします。')}</div>` +
         `<div id="loanWrap">` +
         field('loanCount', '支払い回数（全部で何回）', `<input id="loanCount" name="loanCount" type="number" inputmode="numeric" min="1" max="600" step="1" value="${p && p.loan ? p.loan.count : ''}" placeholder="例：36">`) +
@@ -745,12 +745,13 @@
           const per = { monthly: '毎月', yearly: '1回あたり', every: '1回あたり', once: '1回' }[rt];
           const dv = !loan && !isCard && varC.checked;
           // v6.0: 新規の変動（口座直接）は「前回の引き落とし（M/D）の金額」。まだ分からない／前回がない ときは従来の目安
+          const pend = !p && dv && formDatePending(f);   // v6.0.2: 日付が未選択でも「前回の引き落とし」として扱う
           const lo = !p && dv ? formLastOcc(f) : null, unk = f.unknown && f.unknown.checked;
-          if (f.unknown) $('#unkWrap', f).hidden = !lo;
-          const known = lo && !unk;
+          if (f.unknown) $('#unkWrap', f).hidden = !(lo || pend);
+          const known = lo && !unk, pk = pend && !unk;
           $('#amtHint', f).hidden = !dv;
-          $('#amtHint', f).textContent = known ? `${ymLabel(lo.month)}分の実績として記録し、これからの目安にも使います。` : '金額が分かったら「実績」から入力すると置き換わります。';
-          $('#amtLabel', f).textContent = loan ? '毎月の返済額（円）' : known ? `前回の引き落とし（${mdPlain(lo.date)}）の金額` : dv ? '目安の金額（先月の金額でOK・円）' : isCard ? `金額（円／${per}・カードの請求額に含まれます）` : `金額（円／${per}）`;
+          $('#amtHint', f).textContent = known ? `${ymLabel(lo.month)}分の実績として記録し、これからの目安にも使います。` : pk ? '引き落とし日を選ぶと日付が入ります' : '金額が分かったら「実績」から入力すると置き換わります。';
+          $('#amtLabel', f).textContent = loan ? '毎月の返済額（円）' : known ? `前回の引き落とし（${mdPlain(lo.date)}）の金額` : pk ? '前回の引き落としの金額' : dv ? '目安の金額（先月の金額でOK・円）' : isCard ? `金額（円／${per}・カードの請求額に含まれます）` : `金額（円／${per}）`;
         };
         sel.addEventListener('change', () => { sync(); loanSync(); }); varC.addEventListener('change', sync); f.repeat.addEventListener('change', sync);
         ['day', 'repMonth', 'repN', 'repStart', 'repDate', 'unknown'].forEach((k) => { if (f[k]) { f[k].addEventListener('change', sync); f[k].addEventListener('input', sync); } });
@@ -788,19 +789,20 @@
       title: i ? '収入を編集' : '収入を追加',
       body: field('name', '名前', `<input id="name" name="name" required maxlength="40" value="${esc(i ? i.name : '')}" placeholder="例：給与">`) +
         `<div id="varWrap" class="f chk"><label><input type="checkbox" name="variable" id="variable" ${i && i.variable ? 'checked' : ''}> 変動（毎月金額が変わる：給与の残業代など）</label></div>` +
-        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${i ? i.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${i ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
+        field('accountId', '入金口座', `<select id="accountId" name="accountId">${acctOptions(i ? i.accountId : state.accounts[0].id)}</select>`) +
         repeatFields(i) +
         `<div id="dayWrap">${field('day', '入金日', dayInput('day', i ? i.day : ''), DAYHINT)}</div>` +
-        field('accountId', '入金口座', `<select id="accountId" name="accountId">${acctOptions(i ? i.accountId : state.accounts[0].id)}</select>`) +
+        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${i ? i.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small>${i ? '' : `<label class="unk" id="unkWrap" hidden><input type="checkbox" id="unknown" name="unknown"> まだ分からない</label>`}</div>` +
         `<div id="fixWrap">${field('fixDay', '金額がわかる日（明細の確定日・毎月・任意）', dayInput('fixDay', i ? i.fixDay : '', false), '給与明細などで金額がわかる日。空欄なら入金日当日。')}</div>` +
         `<div class="f chk"><label><input type="checkbox" name="active" ${!i || i.active !== false ? 'checked' : ''}> 有効</label></div>`,
       setup(f) { const sync = () => { const rt = syncRepeat(f, false, false), noDay = rt === 'once';
         $('#dayWrap', f).hidden = noDay; f.day.disabled = noDay; f.day.required = !noDay;
-        const dv = f.variable.checked, lo = !i && dv ? formLastOcc(f) : null, known = lo && !(f.unknown && f.unknown.checked);
-        if (f.unknown) $('#unkWrap', f).hidden = !lo;
+        const dv = f.variable.checked, lo = !i && dv ? formLastOcc(f) : null, unk = f.unknown && f.unknown.checked, known = lo && !unk;
+        const pend = !i && dv && formDatePending(f), pk = pend && !unk;
+        if (f.unknown) $('#unkWrap', f).hidden = !(lo || pend);
         $('#fixWrap', f).hidden = !dv; $('#amtHint', f).hidden = !dv;
-        $('#amtHint', f).textContent = known ? `${ymLabel(lo.month)}分の実績として記録し、これからの目安にも使います。` : '金額が分かったら「実績」から入力すると置き換わります。';
-        $('#amtLabel', f).textContent = known ? `前回の入金（${mdPlain(lo.date)}）の金額` : dv ? '目安の金額（先月の金額でOK・円）' : `金額（円／${{ monthly: '毎月', yearly: '1回あたり', every: '1回あたり', once: '1回' }[rt]}）`; };
+        $('#amtHint', f).textContent = known ? `${ymLabel(lo.month)}分の実績として記録し、これからの目安にも使います。` : pk ? '入金日を選ぶと日付が入ります' : '金額が分かったら「実績」から入力すると置き換わります。';
+        $('#amtLabel', f).textContent = known ? `前回の入金（${mdPlain(lo.date)}）の金額` : pk ? '前回の入金の金額' : dv ? '目安の金額（先月の金額でOK・円）' : `金額（円／${{ monthly: '毎月', yearly: '1回あたり', every: '1回あたり', once: '1回' }[rt]}）`; };
         f.variable.addEventListener('change', sync); f.repeat.addEventListener('change', sync);
         ['day', 'repMonth', 'repN', 'repStart', 'repDate', 'unknown'].forEach((k) => { if (f[k]) { f[k].addEventListener('change', sync); f[k].addEventListener('input', sync); } });
         sync(); },

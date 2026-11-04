@@ -783,4 +783,43 @@ t('変動の新規登録: 前回が残高の日付より後なら、その実績
   assert.deepStrictEqual(ev.map((e) => [e.date, e.amount, e.confirmed]), [['2026-10-27', 7000, true], ['2026-11-27', 7000, false]]);
   assert.strictEqual(pr.endBalance, 86000);
 });
+
+// v6.0.2 グラフ縦軸の目盛り
+const axis = (lo, hi) => L0.axisTicks(lo, hi).map((x) => x.label);
+const noAdjDup = (a) => a.every((x, i) => !i || x !== a[i - 1]);
+t('axisTicks: 小さい幅でも隣り合うラベルが重複しない（30万／29.95万／29.9万）', () => {
+  assert.deepStrictEqual(axis(298800, 300120), ['29.9万', '29.95万', '30万']);
+  assert.deepStrictEqual(axis(299800, 300100), ['29.98万', '29.99万', '30万', '30.01万']);
+  for (const [lo, hi] of [[299000, 300500], [299990, 300003], [123456, 123460], [1e7, 1e7 + 7]]) { const a = axis(lo, hi); assert.ok(a.length >= 1 && noAdjDup(a), lo + '..' + hi + ' ' + a); }
+});
+t('axisTicks: 平らな線（幅0）・0のみでも重複なし', () => {
+  for (const v of [0, 1, 300000, -300000, 12345678]) { const a = axis(v, v); assert.ok(a.length >= 1 && noAdjDup(a), v + ' ' + a); }
+  assert.deepStrictEqual(axis(0, 0), ['−1', '0', '1']);
+});
+t('axisTicks: マイナスを含む・マイナスだけ', () => {
+  assert.deepStrictEqual(axis(-50000, 20000), ['−4万', '−2万', '0', '2万']);
+  assert.deepStrictEqual(axis(-2000000, -1990000), ['−200万', '−199.5万', '−199万']);
+  assert.deepStrictEqual(axis(-3, 2), ['−2', '0', '2']);
+});
+t('axisTicks: 大きい幅（万・億）', () => {
+  assert.deepStrictEqual(axis(0, 5000000), ['0', '200万', '400万']);
+  assert.deepStrictEqual(axis(0, 350000000), ['0', '1億', '2億', '3億']);
+  assert.deepStrictEqual(axis(95000000, 105000000), ['9500万', '1億', '1.05億']);
+  assert.deepStrictEqual(axis(290000, 301000), ['29万', '29.5万', '30万']);
+});
+t('axisTicks: 値は昇順・範囲内・数でない入力は空', () => {
+  const v = L0.axisTicks(12345, 98765).map((x) => x.v);
+  assert.ok(v.every((x, i) => !i || x > v[i - 1]) && v[0] >= 12345 && v[v.length - 1] <= 98765);
+  assert.deepStrictEqual(L0.axisTicks(NaN, 5), []);
+  assert.deepStrictEqual(axis(20000, -50000), axis(-50000, 20000));
+});
+t('axisTicks: 目盛りは2本以上（1本だけにならない）', () => {
+  assert.deepStrictEqual(axis(116700000, 124000000), ['1.18億', '1.2億', '1.22億', '1.24億']);
+  for (const [lo, hi] of [[299900, 300010], [4900, 5000], [-21000, -19900], [0, 7]]) assert.ok(axis(lo, hi).length >= 2, lo + '..' + hi);
+});
+t('axisLabel: 小数の桁数どおりに四捨五入', () => {
+  assert.strictEqual(L0.axisLabel(299500, 1), '30万');
+  assert.strictEqual(L0.axisLabel(299500, 2), '29.95万');
+  assert.strictEqual(L0.axisLabel(-5, 0), '−5');
+});
 console.log(n + ' tests passed');
