@@ -645,7 +645,7 @@
       title: p ? '支払いを編集' : '支払いを追加',
       body: field('ptype', '種類', `<select id="ptype" name="ptype">${opt('normal', '通常の支払い（サブスク・家賃など）', !(p && p.loan))}${opt('loan', 'ローン（回数が決まった分割払い）', !!(p && p.loan))}</select>`) +
         field('name', '名前・サイト／サービス名', `<input id="name" name="name" required maxlength="60" value="${esc(p ? p.name : '')}" placeholder="例：動画配信サービス">`) +
-        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${p ? p.amount : ''}"></div>` +
+        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${p ? p.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small></div>` +
         field('cardId', '支払い方法（カードを選択）', `<select id="cardId" name="cardId">${state.cards.map((c) => opt(c.id, 'カード：' + c.name, c.id === curCard)).join('')}${opt('', '口座から直接引き落とし', curCard === '')}</select>`, state.cards.length ? '' : 'カードが未登録です。先に「カード・口座」タブで追加すると選べます。') +
         `<div id="accWrap">${field('accountId', '引き落とし口座', `<select id="accountId" name="accountId">${acctOptions(p ? p.accountId : state.accounts[0].id)}</select>`)}</div>` +
         repeatFields(p && !p.loan ? p : null) +
@@ -692,7 +692,7 @@
           note.hidden = !isCard; if (cd) note.innerHTML = '💳 <b>引き落とし日はカード設定に従います</b>（' + esc(cd.name) + '：毎月' + dl(cd.withdrawDay) + '、' + esc((byId(state.accounts, cd.accountId) || {}).name || '口座未設定') + '）。変更は「カード・口座」タブのカード編集で行います。';
           $('#fixWrap', f).hidden = isCard || loan || !varC.checked;
           const per = { monthly: '毎月', yearly: '1回あたり', every: '1回あたり', once: '1回' }[rt];
-          $('#amtLabel', f).textContent = loan ? '毎月の返済額（円）' : !isCard && varC.checked ? '仮の金額（初回の見込み額・円）' : isCard ? `金額（円／${per}・カードの請求額に含まれます）` : `金額（円／${per}）`;
+          $('#amtHint', f).hidden = !(!loan && !isCard && varC.checked); $('#amtLabel', f).textContent = loan ? '毎月の返済額（円）' : !isCard && varC.checked ? '目安の金額（先月の金額でOK・円）' : isCard ? `金額（円／${per}・カードの請求額に含まれます）` : `金額（円／${per}）`;
         };
         sel.addEventListener('change', () => { sync(); loanSync(); }); varC.addEventListener('change', sync); f.repeat.addEventListener('change', sync); sync(); loanSync();
       },
@@ -724,7 +724,7 @@
     openForm({
       title: i ? '収入を編集' : '収入を追加',
       body: field('name', '名前', `<input id="name" name="name" required maxlength="40" value="${esc(i ? i.name : '')}" placeholder="例：給与">`) +
-        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${i ? i.amount : ''}"></div>` +
+        `<div class="f"><label for="amount" id="amtLabel">金額（円／毎月）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" required value="${i ? i.amount : ''}"><small id="amtHint" class="hint" hidden>金額が分かったら「実績」から入力すると置き換わります。</small></div>` +
         repeatFields(i) +
         `<div id="dayWrap">${field('day', '入金日', dayInput('day', i ? i.day : ''), DAYHINT)}</div>` +
         field('accountId', '入金口座', `<select id="accountId" name="accountId">${acctOptions(i ? i.accountId : state.accounts[0].id)}</select>`) +
@@ -733,7 +733,7 @@
         `<div class="f chk"><label><input type="checkbox" name="active" ${!i || i.active !== false ? 'checked' : ''}> 有効</label></div>`,
       setup(f) { const sync = () => { const rt = syncRepeat(f, false, false), noDay = rt === 'once';
         $('#dayWrap', f).hidden = noDay; f.day.disabled = noDay; f.day.required = !noDay;
-        $('#fixWrap', f).hidden = !f.variable.checked; $('#amtLabel', f).textContent = f.variable.checked ? '仮の金額（初回の見込み額・円）' : `金額（円／${{ monthly: '毎月', yearly: '1回あたり', every: '1回あたり', once: '1回' }[rt]}）`; };
+        $('#fixWrap', f).hidden = !f.variable.checked; $('#amtHint', f).hidden = !f.variable.checked; $('#amtLabel', f).textContent = f.variable.checked ? '目安の金額（先月の金額でOK・円）' : `金額（円／${{ monthly: '毎月', yearly: '1回あたり', every: '1回あたり', once: '1回' }[rt]}）`; };
         f.variable.addEventListener('change', sync); f.repeat.addEventListener('change', sync); sync(); },
       onSubmit(fd) {
         const variable = fd.get('variable') === 'on';
