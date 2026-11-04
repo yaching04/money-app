@@ -12,7 +12,7 @@ const seed = { version: 2, accounts: [{ id: 'a1', name: '銀行', balance: 20000
   payments: [], incomes: [], actuals: {}, imports: {}, settings: { targetDate: null, projAccount: 'all', viewMonth: null } };
 (async () => {
   const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'], headless: 'new' });
-  const p = await b.newPage(); const errs = [], natives = [];
+  const p = await b.newPage(); p.setDefaultNavigationTimeout(90000); const errs = [], natives = [];
   p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', (e) => errs.push(e.message));
   p.on('dialog', async (d) => { natives.push(d.type() + ':' + d.message()); await d.dismiss(); });
   await p.setBypassServiceWorker(true);

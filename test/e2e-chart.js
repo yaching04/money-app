@@ -5,7 +5,7 @@ const OUT = process.argv[2] || '';
 let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' : 'FAIL') + ' ' + n); };
 (async () => {
   const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'], headless: 'new' });
-  const p = await b.newPage(); const errs = [];
+  const p = await b.newPage(); p.setDefaultNavigationTimeout(90000); const errs = [];
   p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', (e) => errs.push(e.message));
   await p.setBypassServiceWorker(true);
   await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });

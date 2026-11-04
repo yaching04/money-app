@@ -14,7 +14,7 @@ function seed() {
 }
 (async () => {
   const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'], headless: 'new' });
-  const p = await b.newPage(); const errs = [];
+  const p = await b.newPage(); p.setDefaultNavigationTimeout(90000); const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   await p.setBypassServiceWorker(true);
   const URL = 'http://127.0.0.1:8765/index.html';

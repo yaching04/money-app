@@ -462,3 +462,21 @@ body.typing .tabs,body.typing .fab{display:none}
 .card h2 .h2a{margin-left:auto}
 @media (max-width:359px){.srow .stop{flex-wrap:wrap}.srow .stop>.l{flex:1 1 100%}.srow .stop>.r{margin-left:auto}}
 .hero .warnst{gap:4px}.hero .warnst .st-ic{margin-right:4px}
+/* v6.0.1 */
+.hero .nextst .st-ks{display:none}
+.hero .nextst .st-a{flex:none;font-weight:700}
+@media (max-width:430px){.hero .nextst .st-kl{display:none}.hero .nextst .st-ks{display:inline}.hero .nextst .st-dw{display:none}}
+#main .nm{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:normal;overflow-wrap:anywhere}
+#main .nm.open{display:block;-webkit-line-clamp:unset;line-clamp:none}
+#main .nm.xp{cursor:pointer}
+@media (max-width:359px){
+  #main .card .row:not(.pv){flex-wrap:wrap;row-gap:4px}
+  #main .card .row:not(.pv)>.l{flex:1 1 100%}
+  #main .card .row:not(.pv)>.l+*{margin-left:auto}
+  #main .row.pv{grid-template-areas:"n n n" "s a w" ". b x"}
+}
+/* 1行目：名前だけを…で縮める。金額と「→ 残り」は必ず全部見せる（入りきらない大きな金額のときだけ2段にして右寄せ） */
+.hero .nextst{flex-wrap:wrap;row-gap:0}
+.hero .nextst .st-k{flex:none;overflow:visible}
+.hero .nextst .st-n{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero .nextst .st-ar{flex:none;margin-left:auto;display:flex;gap:8px;white-space:nowrap}
