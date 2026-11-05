@@ -524,7 +524,7 @@ body.typing .tabs,body.typing .fab{display:none}
 .hero .st2 .st-l3{display:block;font-size:13px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero .st2 .st-l3 .st-ia{font-weight:700}
 
-/* v6.0.6: 更新バー表示中はスクロール容器（html/#main）に余白。帯の高さは --upd-h */
+/* v6.0.6/v6.0.7: 更新バー表示中はスクロール容器（html/#main）に余白。帯の高さは --upd-h（スクロールは動かさない） */
 html{scroll-padding-bottom:calc(76px + env(safe-area-inset-bottom))}
 html.has-upd{scroll-padding-bottom:calc(76px + var(--upd-h, 56px) + env(safe-area-inset-bottom))}
 body.has-upd{padding-bottom:calc(76px + var(--upd-h, 56px) + env(safe-area-inset-bottom))}

@@ -489,7 +489,7 @@
     $('#main').innerHTML = html;
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   }
-  function go(t) { tab = t; render(); window.scrollTo(0, 0); if (document.body.classList.contains('has-upd')) requestAnimationFrame(clearUpdObscured); }
+  function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 
   /* ---------- フォーム ---------- */
   const opt = (v, label, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(label)}</option>`;
@@ -1285,31 +1285,7 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (!isTyping(document.activeElement)) { document.body.classList.remove('typing'); if (window.scrollX) window.scrollTo(0, window.scrollY); } });
   render();
   syncNotify();
-  // v6.0.6: 更新バーより下に食い込んだ操作・本文末尾を、帯の上へ一度でずらす
-  function clearUpdObscured() {
-    const d = document.getElementById('updBar'); if (!d) return;
-    // 帯の上端より下にはみ出している画面内の要素を、まとめて帯の上へ（部分的なスクロールで別要素が帯に入るのを避ける）
-    for (let i = 0; i < 3; i++) {
-      const u = d.getBoundingClientRect(); let need = 0;
-      const bump = (el) => {
-        if (!el || el.closest('#updBar') || el.closest('.tabs')) return;
-        const cs = getComputedStyle(el);
-        if (cs.position === 'fixed' || cs.display === 'none') return;
-        if (!el.getClientRects().length) return;
-        const q = el.getBoundingClientRect(); if (!q.height) return;
-        if (q.bottom > u.top + 0.5 && q.top < innerHeight) need = Math.max(need, q.bottom - u.top + 8);
-      };
-      document.querySelectorAll('#main button, #main [data-act], #main .lnk, #main a').forEach(bump);
-      const kids = [...document.querySelectorAll('#main > *')].filter((e) => e.offsetHeight && getComputedStyle(e).position !== 'fixed');
-      const last = kids[kids.length - 1];
-      if (last) {
-        const q = last.getBoundingClientRect();
-        if (q.bottom > u.top + 0.5 && q.top < innerHeight) need = Math.max(need, q.bottom - u.top + 8);
-      }
-      if (need <= 0) break;
-      window.scrollBy(0, need);
-    }
-  }
+  // v6.0.7: 更新バーは余白だけ足す（スクロール位置は変えない）。末尾までスクロールすれば押せる
   function showUpdateBar() {
     if (document.getElementById('updBar')) return;
     const d = document.createElement('div'); d.id = 'updBar'; d.className = 'updbar'; d.setAttribute('role', 'status');
@@ -1324,10 +1300,8 @@
     document.body.style.setProperty('--upd-h', h + 'px');
     document.documentElement.style.setProperty('--upd-h', h + 'px');
     document.body.classList.add('has-upd'); document.documentElement.classList.add('has-upd');
-    requestAnimationFrame(clearUpdObscured);
   }
   window.__showUpdateBar = showUpdateBar;   // テスト用
-  window.__clearUpdObscured = clearUpdObscured;
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     // v6.0.4: 新しい版が入ったら下に「新しい版があります」バー（最初のインストールでは出さない）
     const hadCtrl = !!navigator.serviceWorker.controller;
