@@ -894,6 +894,16 @@
     drawActuals();
     showAppDialog($('#dlg'));
   }
+  /** 選択月の予定（土日祝ずらし後の日付）。請求月で探すので、ずれて隣月の日付になっても拾える */
+  function actEventInMonth(kind, id, month) {
+    const from = L.addDays(L.monthFirst(month), -20), to = L.addDays(L.monthLast(month), 20);
+    return L.genEvents(state, from, to).find((e) => e.refKind === kind && e.refId === id && e.month === month) || null;
+  }
+  function amSubText(kind, month) {
+    const e = actEventInMonth(kind, actCtx.id, month);
+    if (!e) return '';
+    return mdPlain(e.date) + ' ' + (kind === 'inc' ? '入金' : '引き落とし');
+  }
   function drawActuals() {
     const { kind, id } = actCtx; const it = itemOf(kind, id); const dlg = $('#dlg');
     const hist = L.history(state, kind, id).slice().reverse();
@@ -901,21 +911,30 @@
     const nextProv = L.genEvents(state, L.addDays(t, -1), L.addDays(t, 75)).find((e) => e.refKind === kind && e.refId === id && !e.confirmed);
     const defMonth = nextProv ? nextProv.month : L.monthKey(t);
     const amMax = addMonths(L.monthKey(t), 1);
-    dlg.innerHTML = `<div class="sheet"><h2 id="dlgT">実績の記録：${esc(it.name)}</h2>
-      <p class="hint">${nextProv ? `次回の仮の金額：<b>仮 ${yenAbs(nextProv.amount)}</b>（${md(nextProv.date)}・${esc(srcText(nextProv))}）` : '次回の予定はありません'}<br>仮の金額＝直近(最大)3回の実績の平均。実績が無いうちは初期見込み額（${yenAbs(initialOf(kind, it))}）です。</p>
-      <div class="f"><label id="amLab">月（引き落とし${kind === 'inc' ? '（入金）' : ''}日が属する月）</label>
-        <div class="amnav" role="group" aria-labelledby="amLab">
-          <button type="button" class="amnav-b" data-act="am-prev" aria-label="前の月">‹</button>
+    const amMin = addMonths(L.monthKey(t), -36);
+    const initAmt = initialOf(kind, it);
+    const ph = nextProv ? Math.round(nextProv.amount) : (initAmt ? Math.round(initAmt) : '');
+    const top = nextProv
+      ? `次回の仮の金額：<b>仮 ${yenAbs(nextProv.amount)}</b> <button type="button" class="q" data-act="act-avg-help" aria-label="仮の金額の説明" aria-expanded="false">？</button>`
+      : '次回の予定はありません';
+    const help = `仮の金額＝直近(最大)3回の実績の平均。実績が無いうちは初期見込み額（${yenAbs(initAmt)}）です。`;
+    dlg.innerHTML = `<div class="sheet act-sheet"><h2 id="dlgT">実績の記録：${esc(it.name)}</h2>
+      <p class="hint act-top">${top}</p>
+      <p class="hint act-avg-help" hidden>${help}</p>
+      <div class="amnav-wrap">
+        <div class="amnav" role="group" aria-label="月">
+          <button type="button" class="amnav-b" data-act="am-prev" aria-label="前の月"${defMonth <= amMin ? ' disabled' : ''}>‹</button>
           <span class="amnav-l" id="amLbl">${amShortLabel(defMonth)}</span>
           <button type="button" class="amnav-b" data-act="am-next" aria-label="次の月"${defMonth >= amMax ? ' disabled' : ''}>›</button>
         </div>
+        <div class="amnav-sub" id="amSub">${amSubText(kind, defMonth)}</div>
         <input type="hidden" id="am" value="${defMonth}">
       </div>
-      <div class="f"><label for="aa">確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="例：6200" autofocus><p class="cmp" id="acmp" hidden></p></div>
+      <div class="f"><label for="aa">確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="${ph}" autofocus><p class="cmp" id="acmp" hidden></p></div>
       <button class="btn" data-act="act-add">この月の実績を保存</button>
-      <h3 style="margin:16px 0 8px;font-size:16px;color:var(--sub)">これまでの実績（新しい順）</h3>
+      <h3 class="act-hist">これまでの実績（新しい順）</h3>
       ${hist.length ? hist.map((x, i) => `<div class="row"><div class="l"><b>${ymLabel(x.month)}</b>${i < 3 ? '<small>平均の対象（直近3件）</small>' : ''}</div><div class="r">${yenAbs(x.amount)}</div><button class="btn sm danger" data-act="act-del" data-month="${x.month}">削除</button></div>`).join('') : '<div class="empty">まだ実績がありません</div>'}
-      <button class="btn sec" data-act="close-dlg" style="margin-top:12px">閉じる</button></div>`;
+      <button class="btn sec" data-act="close-dlg" style="margin-top:8px">閉じる</button></div>`;
     const up = bindCmp($('#aa', dlg), $('#acmp', dlg), () => ($('#am', dlg).value ? { kind, id, month: $('#am', dlg).value } : null));
     $('#am', dlg).addEventListener('change', up);
     if (dlg.open) showAppDialog(dlg);
@@ -1216,15 +1235,22 @@
       case 'csv-next': if (csv) { csv.step = 'actions'; drawCsv(); } break;
       case 'csv-apply': if (csv) applyCsv(); break;
       case 'am-prev': case 'am-next': {
-        const am = $('#am'), lbl = $('#amLbl'); if (!am) break;
-        const max = addMonths(L.monthKey(todayStr()), 1);
+        const am = $('#am'), lbl = $('#amLbl'), sub = $('#amSub'); if (!am || !actCtx) break;
+        const max = addMonths(L.monthKey(todayStr()), 1), min = addMonths(L.monthKey(todayStr()), -36);
         let ym = addMonths(am.value || L.monthKey(todayStr()), t.dataset.act === 'am-prev' ? -1 : 1);
-        if (ym > max) ym = max;
+        if (ym > max) ym = max; if (ym < min) ym = min;
         am.value = ym;
         if (lbl) lbl.textContent = amShortLabel(ym);
-        const nb = document.querySelector('#dlg [data-act=am-next]');
+        if (sub) sub.textContent = amSubText(actCtx.kind, ym);
+        const nb = document.querySelector('#dlg [data-act=am-next]'), pb = document.querySelector('#dlg [data-act=am-prev]');
         if (nb) nb.disabled = ym >= max;
+        if (pb) pb.disabled = ym <= min;
         am.dispatchEvent(new Event('change', { bubbles: true }));
+        break;
+      }
+      case 'act-avg-help': {
+        const sm = $('#dlg .act-avg-help'); if (!sm) break;
+        sm.hidden = !sm.hidden; t.setAttribute('aria-expanded', String(!sm.hidden));
         break;
       }
       case 'act-add': {

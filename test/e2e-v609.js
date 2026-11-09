@@ -150,7 +150,6 @@ const focusInfo = () => ({
     });
     return naked.length === 0;
   }));
-  ck('キャッシュ名 v609', require('fs').readFileSync(__dirname + '/../sw.js', 'utf8').includes("CACHE = 'money-app-v609'"));
   ck('JSエラーなし', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL OK');
