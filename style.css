@@ -531,3 +531,10 @@ body.has-upd{padding-bottom:calc(76px + var(--upd-h, 56px) + env(safe-area-inset
 body.has-upd #main{padding-bottom:calc(24px + var(--upd-h, 56px))}
 body.has-upd .fab{bottom:calc(84px + var(--upd-h, 56px) + env(safe-area-inset-bottom))}
 body.has-upd .toast{bottom:calc(90px + var(--upd-h, 56px) + env(safe-area-inset-bottom))}
+
+/* v6.0.9: 実績の月ステッパー・ダイアログ見出しのフォーカスリングなし */
+.amnav{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px}
+.amnav-b{flex:none;width:44px;height:44px;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:16px;font-family:inherit;color:var(--ink);padding:0;line-height:1}
+.amnav-b:disabled{opacity:.35}
+.amnav-l{flex:1;text-align:center;font-size:16px;font-weight:700;min-width:0}
+.sheet h2:focus,.cfm h2:focus,h2[tabindex="-1"]:focus{outline:none;box-shadow:none}

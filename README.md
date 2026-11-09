@@ -150,3 +150,12 @@ JSONの `version: 2`（`accounts, cards, payments, incomes, actuals, settings`�
 - テスト: test/e2e-v608.js（開いた直後は select にフォーカスしない・閉じた高さ・タップでフォーカス・値の変更、スクショ `v608-detail-closed.png` / `v608-detail-open.png`）。
 - キャッシュ名 money-app-v608。
 
+
+## v6.0.9
+- ダイアログを開いたとき select / month / date にフォーカスが当たって iPhone のホイールや日付入力が出てしまう件を、アプリ全体で修正。すべての `showModal` を `showAppDialog` 経由にし、`[autofocus]` があればそこへ、なければ見出し `h2`（`tabindex=-1`）へフォーカスする。他に autofocus が無いときは showModal 前に h2 へ autofocus を付け、一瞬の select フォーカスも防ぐ。各ダイアログは `aria-labelledby` で見出しと結ぶ。見出しにフォーカスリングは出さない。
+- 「実績の記録」は開いた直後に金額欄 `#aa` へフォーカス（月の入力欄に数字が当たって年月が書き換わるのを防ぐ）。月は入力できないステッパー（‹・「11月分」／他年は「2026年11月分」・›、タップ領域44px、›は翌月まで）。隠れた `#am`（YYYY-MM）で保存ロジックと既存テストを維持。
+- 「明細CSVを読み込む」手順1も見出しへフォーカス（カード選択の select が開かない）。
+- 入力待ちからの実績入力・残高変更はこれまでどおり金額欄へフォーカス。Esc で閉じる動作は変更なし。
+- テスト: test/e2e-v609.js（主要ダイアログを 320/375/390 で開き、activeElement が select / month / date でないこと、実績はステッパー＋金額フォーカス、CSV手順1は見出しフォーカス、スクショ `v609-actuals-open.png` / `v609-csv-step1.png`）。e2e-v60 の `#am` 入力はステッパー操作に更新。
+- キャッシュ名 money-app-v609。
+

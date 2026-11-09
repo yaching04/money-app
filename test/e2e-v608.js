@@ -106,7 +106,6 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   ck('カード編集を開いた直後も select にフォーカスしない', !card.activeIsSelect);
   ck('カード編集: 既存の確定日・引落日が選択されている', card.fix === '15' && card.wd === '27');
 
-  ck('キャッシュ名 v608', require('fs').readFileSync(__dirname + '/../sw.js', 'utf8').includes("CACHE = 'money-app-v608'"));
   ck('JSエラーなし', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL OK');

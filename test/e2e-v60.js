@@ -84,7 +84,9 @@ const base = (o) => Object.assign({ version: 2, accounts: [A()], cards: [], paym
   ck('案内タップ → 実績の記録', await p.evaluate(() => document.querySelector('#dlg').open && /実績/.test(document.querySelector('#dlg h2').textContent)));
 
   // 実績の上書きは確認
-  await p.evaluate(() => { const m = document.querySelector('#am'); m.value = '2026-10'; m.dispatchEvent(new Event('input', { bubbles: true })); });
+  // v6.0.9: 月はステッパー。既定（次回の仮＝11月）から‹で10月へ
+  await p.click('#dlg [data-act=am-prev]'); await sleep(150);
+  ck('実績の月ステッパー: 10月分', await p.evaluate(() => document.querySelector('#am').value === '2026-10' && /10月分/.test(document.querySelector('#amLbl').textContent)));
   await p.type('#aa', '9000'); await p.click('#dlg [data-act=act-add]'); await sleep(300);
   ck('上書き: 確認が出る [' + await cfm() + ']', /上書き/.test(await cfm()) && /8,000/.test(await cfm()) && /9,000/.test(await cfm()));
   await p.click(noBtn); await sleep(300);

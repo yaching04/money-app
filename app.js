@@ -15,6 +15,10 @@
   const md = (s) => { if (!L.isDateStr(s)) return '—'; const p = L.parse(s); return p.m + '/' + p.d + '(' + dow(s) + ')'; };
   const ymd = (s) => { if (!L.isDateStr(s)) return '—'; const p = L.parse(s); return p.y + '年' + p.m + '月' + p.d + '日(' + dow(s) + ')'; };
   const ymLabel = (k) => { if (!/^\d{4}-\d{2}/.test(String(k))) return '—'; const [y, m] = String(k).split('-'); return y + '年' + Number(m) + '月'; };
+  /** YYYY-MM に n か月足す（n は負も可） */
+  const addMonths = (ym, n) => { const [y, m] = String(ym).split('-').map(Number); const d = new Date(y, m - 1 + n, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+  /** 実績の月表示：今年なら「11月分」、ほかの年は「2026年11月分」 */
+  const amShortLabel = (ym) => { const [y, m] = String(ym).split('-'); return (y === String(todayStr()).slice(0, 4) ? '' : y + '年') + Number(m) + '月分'; };
 
   /* ---------- 状態 ---------- */
   function load() { try { return L.migrate(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return L.migrate(null); } }
@@ -557,6 +561,23 @@
   }
   const onceDone = (it, dayV) => L.repType(it) === 'once' && !L.nextOccurrence(it, dayV, L.addDays(todayStr(), -1));
 
+  /* v6.0.9: すべての showModal はこの関数経由。開いた直後に select / month / date へフォーカスが当たらないようにする。
+   * [autofocus] があればそこへ、なければ見出し h2（tabindex=-1）へ。他に autofocus が無いときは showModal 前に h2 へ autofocus を付け、
+   * iOS が先頭の select を一瞬フォーカスしてホイールを出すのを防ぐ。aria-labelledby も h2 に結ぶ。 */
+  function showAppDialog(dlg, root) {
+    root = root || dlg.querySelector('.sheet, .cfm') || dlg;
+    const h = root.querySelector('h2');
+    if (h) {
+      if (!h.id) h.id = 'dlgT';
+      dlg.setAttribute('aria-labelledby', h.id);
+      h.setAttribute('tabindex', '-1');
+      if (!root.querySelector('[autofocus]')) h.setAttribute('autofocus', '');
+    }
+    if (!dlg.open) dlg.showModal();
+    const t = root.querySelector('[autofocus]') || h;
+    if (t) try { t.focus({ preventScroll: true }); } catch (_) {}
+  }
+
   /* アプリ内の確認ダイアログ（confirm/prompt/alert の代わり。iPhoneのホーム画面アプリでも確実に動く）
    * 毎回新しい <dialog> を作って最前面に出し、閉じたら取り除く。OK=true / キャンセル・外側タップ=false を返す */
   function askConfirm(o) {
@@ -569,7 +590,7 @@
       const fin = (v) => { if (done) return; done = true; try { d.close(); } catch (_) {} d.remove(); resolve(v); };
       d.addEventListener('click', (e) => { const c = e.target.dataset && e.target.dataset.c; if (c === '1') fin(true); else if (c === '0') fin(false); else if (e.target === d && !o.noCancel) fin(false); });
       d.addEventListener('cancel', (e) => { e.preventDefault(); fin(false); });   // Esc
-      document.body.appendChild(d); d.showModal();
+      document.body.appendChild(d); showAppDialog(d);
     });
   }
 
@@ -604,14 +625,7 @@
       });
     });
     if (o.setup) o.setup(f);
-    dlg.showModal();
-    // v6.0.8: ダイアログを開くと先頭の<select>（支払いの「種類」など）にフォーカスが当たり、
-    // iPhoneではネイティブの選択肢（ホイール）が一気に出てしまう。autofocus付き欄がなければ
-    // 見出しへフォーカスを移し、閉じた見た目のまま・タップしたときだけ開くようにする。
-    if (!f.querySelector('[autofocus]')) {
-      const h = f.querySelector('h2');
-      if (h) { h.setAttribute('tabindex', '-1'); try { h.focus({ preventScroll: true }); } catch (_) {} }
-    }
+    showAppDialog(dlg, f);
   }
   const CANCEL = { cancel: true };
   /** 既存の実績を別の金額で上書きするときは必ず確認する（同じ金額・実績なしはそのまま） */
@@ -669,13 +683,13 @@
     openForm({
       title: '残高を変更', saveLabel: 'この残高にする', doneMsg: '残高を更新しました',
       body: (state.accounts.length > 1 ? field('accountId', '口座', `<select id="accountId" name="accountId">${state.accounts.map((x) => opt(x.id, x.name, x.id === a0.id)).join('')}</select>`) : `<p class="hint" style="margin:0 0 6px"><b>${esc(a0.name)}</b></p>`) +
-        field('balance', `いまの残高（円・${md(t)}時点）`, `<input id="balance" name="balance" type="number" inputmode="numeric" step="1" required value="${cur(a0)}">`) +
+        field('balance', `いまの残高（円・${md(t)}時点）`, `<input id="balance" name="balance" type="number" inputmode="numeric" step="1" required value="${cur(a0)}" autofocus>`) +
         `<p class="hint" id="balNote"></p>`,
       setup(f) {
         const acc = () => byId(state.accounts, f.accountId ? f.accountId.value : a0.id);
         const note = () => { const x = acc(); $('#balNote', f).textContent = `今日（${md(t)}）の残高として保存し、明日以降の引き落とし・入金から見込みを計算し直します。（登録済み：${yen(x.balance)}・${md(x.asOf)}時点）`; };
         if (f.accountId) f.accountId.addEventListener('change', () => { f.balance.value = cur(acc()); note(); });
-        note(); setTimeout(() => { try { f.balance.focus(); f.balance.select(); } catch (_) {} }, 50);
+        note(); setTimeout(() => { try { f.balance.select(); } catch (_) {} }, 50);
       },
       onSubmit(fd) {
         if (!L.setBalance(state, fd.get('accountId') || a0.id, num(fd, 'balance'), t)) return '残高を数字で入力してください';
@@ -878,7 +892,7 @@
     const it = itemOf(kind, id); if (!it) return;
     actCtx = { kind, id };
     drawActuals();
-    const dlg = $('#dlg'); if (!dlg.open) dlg.showModal();
+    showAppDialog($('#dlg'));
   }
   function drawActuals() {
     const { kind, id } = actCtx; const it = itemOf(kind, id); const dlg = $('#dlg');
@@ -886,16 +900,25 @@
     const t = todayStr();
     const nextProv = L.genEvents(state, L.addDays(t, -1), L.addDays(t, 75)).find((e) => e.refKind === kind && e.refId === id && !e.confirmed);
     const defMonth = nextProv ? nextProv.month : L.monthKey(t);
-    dlg.innerHTML = `<div class="sheet"><h2>実績の記録：${esc(it.name)}</h2>
+    const amMax = addMonths(L.monthKey(t), 1);
+    dlg.innerHTML = `<div class="sheet"><h2 id="dlgT">実績の記録：${esc(it.name)}</h2>
       <p class="hint">${nextProv ? `次回の仮の金額：<b>仮 ${yenAbs(nextProv.amount)}</b>（${md(nextProv.date)}・${esc(srcText(nextProv))}）` : '次回の予定はありません'}<br>仮の金額＝直近(最大)3回の実績の平均。実績が無いうちは初期見込み額（${yenAbs(initialOf(kind, it))}）です。</p>
-      <div class="f"><label>月（引き落とし${kind === 'inc' ? '（入金）' : ''}日が属する月）</label><input type="month" id="am" value="${defMonth}"></div>
-      <div class="f"><label>確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="例：6200"><p class="cmp" id="acmp" hidden></p></div>
+      <div class="f"><label id="amLab">月（引き落とし${kind === 'inc' ? '（入金）' : ''}日が属する月）</label>
+        <div class="amnav" role="group" aria-labelledby="amLab">
+          <button type="button" class="amnav-b" data-act="am-prev" aria-label="前の月">‹</button>
+          <span class="amnav-l" id="amLbl">${amShortLabel(defMonth)}</span>
+          <button type="button" class="amnav-b" data-act="am-next" aria-label="次の月"${defMonth >= amMax ? ' disabled' : ''}>›</button>
+        </div>
+        <input type="hidden" id="am" value="${defMonth}">
+      </div>
+      <div class="f"><label for="aa">確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="例：6200" autofocus><p class="cmp" id="acmp" hidden></p></div>
       <button class="btn" data-act="act-add">この月の実績を保存</button>
       <h3 style="margin:16px 0 8px;font-size:16px;color:var(--sub)">これまでの実績（新しい順）</h3>
       ${hist.length ? hist.map((x, i) => `<div class="row"><div class="l"><b>${ymLabel(x.month)}</b>${i < 3 ? '<small>平均の対象（直近3件）</small>' : ''}</div><div class="r">${yenAbs(x.amount)}</div><button class="btn sm danger" data-act="act-del" data-month="${x.month}">削除</button></div>`).join('') : '<div class="empty">まだ実績がありません</div>'}
       <button class="btn sec" data-act="close-dlg" style="margin-top:12px">閉じる</button></div>`;
     const up = bindCmp($('#aa', dlg), $('#acmp', dlg), () => ($('#am', dlg).value ? { kind, id, month: $('#am', dlg).value } : null));
     $('#am', dlg).addEventListener('change', up);
+    if (dlg.open) showAppDialog(dlg);
   }
 
   /* ---------- v5.8 明細CSVの読み込み ----------
@@ -908,7 +931,7 @@
     if (!state.cards.length) { toast('先にカードを登録してください'); return; }
     csv = { cardId: byId(state.cards, cardId) ? cardId : state.cards[0].id, step: 'card' };
     drawCsv();
-    const dlg = $('#dlg'); if (!dlg.open) dlg.showModal();
+    showAppDialog($('#dlg'));
   }
   // v6.0: 「1 ファイル選択・2 中身の確認・3 登録する内容」（今の手順だけ太字）
   const csvSteps = (n) => `<p class="csv-step" aria-label="手順 ${n}/3">${['1 ファイル選択', '2 中身の確認', '3 登録する内容'].map((l, i) => i + 1 === n ? `<b aria-current="step">${l}</b>` : `<span>${l}</span>`).join('・')}</p>`;
@@ -930,7 +953,7 @@
     const dlg = $('#dlg'), card = csvCard(); if (!card) return;
     let h = '';
     if (csv.step === 'card') {
-      h = `<h2>明細CSVを読み込む</h2>${csvSteps(1)}
+      h = `<h2 id="dlgT">明細CSVを読み込む</h2>${csvSteps(1)}
         <div class="f"><label for="csvCard">どのカードの明細ですか</label><select id="csvCard">${state.cards.map((c) => opt(c.id, c.name, c.id === csv.cardId)).join('')}</select></div>
         <p class="hint">カード会社の会員サイトやアプリでダウンロードした「利用明細」のCSVファイルを選んでください。データはこの端末の中だけで読み込み、外部には送りません。</p>
         <button type="button" class="btn" data-act="csv-pick">CSVファイルを選ぶ</button>
@@ -1009,6 +1032,7 @@
     const ms = $('#csvMonth', dlg); if (ms) ms.addEventListener('change', () => { csv.month = ms.value; drawCsv(); });
     ['mDate', 'mMer', 'mAmt'].forEach((k) => { const s = $('#' + k, dlg); if (s) s.addEventListener('change', () => { const mp = csv.an.map; mp[{ mDate: 'date', mMer: 'merchant', mAmt: 'amount' }[k]] = Number(s.value); mp.alt = -1; drawCsv(); }); });
     const fi = $('#csvfile', dlg); if (fi) fi.addEventListener('change', () => { if (fi.files[0]) readCsvFile(fi.files[0]); fi.value = ''; });
+    if (dlg.open) showAppDialog(dlg);
   }
   const csvFail = (msg) => askConfirm({ title: '読み込めませんでした', message: msg, okLabel: 'OK', noCancel: true, danger: false });
   async function readCsvFile(file) {
@@ -1191,6 +1215,18 @@
       case 'csv-map-ok': if (csv) { const mp = csv.an.map; csv.an = CsvImport.analyze(csv.text, { header: mp.header, date: mp.date, merchant: mp.merchant, amount: mp.amount, alt: mp.alt }); csv.an.map.headers = mp.headers; csv.month = CsvImport.guessBillMonth(csvCard(), csv.an.rows, todayStr()); csv.step = 'preview'; drawCsv(); } break;
       case 'csv-next': if (csv) { csv.step = 'actions'; drawCsv(); } break;
       case 'csv-apply': if (csv) applyCsv(); break;
+      case 'am-prev': case 'am-next': {
+        const am = $('#am'), lbl = $('#amLbl'); if (!am) break;
+        const max = addMonths(L.monthKey(todayStr()), 1);
+        let ym = addMonths(am.value || L.monthKey(todayStr()), t.dataset.act === 'am-prev' ? -1 : 1);
+        if (ym > max) ym = max;
+        am.value = ym;
+        if (lbl) lbl.textContent = amShortLabel(ym);
+        const nb = document.querySelector('#dlg [data-act=am-next]');
+        if (nb) nb.disabled = ym >= max;
+        am.dispatchEvent(new Event('change', { bubbles: true }));
+        break;
+      }
       case 'act-add': {
         const m = $('#am').value, v = Number($('#aa').value);
         if (!m) { toast('月を選んでください'); break; }
