@@ -564,7 +564,8 @@
   /* v6.0.9: すべての showModal はこの関数経由。開いた直後に select / month / date へフォーカスが当たらないようにする。
    * [autofocus] があればそこへ、なければ見出し h2（tabindex=-1）へ。他に autofocus が無いときは showModal 前に h2 へ autofocus を付け、
    * iOS が先頭の select を一瞬フォーカスしてホイールを出すのを防ぐ。aria-labelledby も h2 に結ぶ。 */
-  function showAppDialog(dlg, root) {
+  function showAppDialog(dlg, root, opts) {
+    opts = opts || {};
     root = root || dlg.querySelector('.sheet, .cfm') || dlg;
     const h = root.querySelector('h2');
     if (h) {
@@ -573,9 +574,14 @@
       h.setAttribute('tabindex', '-1');
       if (!root.querySelector('[autofocus]')) h.setAttribute('autofocus', '');
     }
-    if (!dlg.open) dlg.showModal();
-    const t = root.querySelector('[autofocus]') || h;
-    if (t) try { t.focus({ preventScroll: true }); } catch (_) {}
+    const first = !dlg.open;
+    if (first) dlg.showModal();
+    // 初回オープン、または明示の focus:true（手順の切り替え・実績の再描画）だけフォーカスする。
+    // select 変更の再描画は focus:false のまま、呼び出し側で同じ select に戻す。
+    if (first || opts.focus === true) {
+      const t = root.querySelector('[autofocus]') || h;
+      if (t) try { t.focus({ preventScroll: true }); } catch (_) {}
+    }
   }
 
   /* アプリ内の確認ダイアログ（confirm/prompt/alert の代わり。iPhoneのホーム画面アプリでも確実に動く）
@@ -908,10 +914,16 @@
     const { kind, id } = actCtx; const it = itemOf(kind, id); const dlg = $('#dlg');
     const hist = L.history(state, kind, id).slice().reverse();
     const t = todayStr();
-    const nextProv = L.genEvents(state, L.addDays(t, -1), L.addDays(t, 75)).find((e) => e.refKind === kind && e.refId === id && !e.confirmed);
+    const nextProv = L.genEvents(state, L.addDays(t, -1), L.addDays(t, 120)).find((e) => e.refKind === kind && e.refId === id && !e.confirmed);
     const defMonth = nextProv ? nextProv.month : L.monthKey(t);
-    const amMax = addMonths(L.monthKey(t), 1);
-    const amMin = addMonths(L.monthKey(t), -36);
+    const nextMonth = addMonths(L.monthKey(t), 1);
+    // 上限＝既定月と「来月」の遅いほう（既定が来月より先でも ›/‹ が対称に動く）
+    const amMax = defMonth > nextMonth ? defMonth : nextMonth;
+    const amMin = addMonths(L.monthKey(t), -12);
+    let cur = actCtx.keepMonth || defMonth;
+    if (actCtx.keepMonth) delete actCtx.keepMonth;
+    if (cur > amMax) cur = amMax;
+    if (cur < amMin) cur = amMin;
     const initAmt = initialOf(kind, it);
     const ph = nextProv ? Math.round(nextProv.amount) : (initAmt ? Math.round(initAmt) : '');
     const top = nextProv
@@ -923,21 +935,22 @@
       <p class="hint act-avg-help" hidden>${help}</p>
       <div class="amnav-wrap">
         <div class="amnav" role="group" aria-label="月">
-          <button type="button" class="amnav-b" data-act="am-prev" aria-label="前の月"${defMonth <= amMin ? ' disabled' : ''}>‹</button>
-          <span class="amnav-l" id="amLbl">${amShortLabel(defMonth)}</span>
-          <button type="button" class="amnav-b" data-act="am-next" aria-label="次の月"${defMonth >= amMax ? ' disabled' : ''}>›</button>
+          <button type="button" class="amnav-b" data-act="am-prev" aria-label="前の月"${cur <= amMin ? ' disabled' : ''}>‹</button>
+          <span class="amnav-l" id="amLbl">${amShortLabel(cur)}</span>
+          <button type="button" class="amnav-b" data-act="am-next" aria-label="次の月"${cur >= amMax ? ' disabled' : ''}>›</button>
         </div>
-        <div class="amnav-sub" id="amSub">${amSubText(kind, defMonth)}</div>
-        <input type="hidden" id="am" value="${defMonth}">
+        <div class="amnav-sub" id="amSub">${amSubText(kind, cur)}</div>
+        <input type="hidden" id="am" value="${cur}">
       </div>
       <div class="f"><label for="aa">確定した金額（円）</label><input type="number" id="aa" inputmode="numeric" min="0" step="1" placeholder="${ph}" autofocus><p class="cmp" id="acmp" hidden></p></div>
       <button class="btn" data-act="act-add">この月の実績を保存</button>
+      <hr class="act-div" aria-hidden="true">
       <h3 class="act-hist">これまでの実績（新しい順）</h3>
       ${hist.length ? hist.map((x, i) => `<div class="row"><div class="l"><b>${ymLabel(x.month)}</b>${i < 3 ? '<small>平均の対象（直近3件）</small>' : ''}</div><div class="r">${yenAbs(x.amount)}</div><button class="btn sm danger" data-act="act-del" data-month="${x.month}">削除</button></div>`).join('') : '<div class="empty">まだ実績がありません</div>'}
       <button class="btn sec" data-act="close-dlg" style="margin-top:8px">閉じる</button></div>`;
     const up = bindCmp($('#aa', dlg), $('#acmp', dlg), () => ($('#am', dlg).value ? { kind, id, month: $('#am', dlg).value } : null));
     $('#am', dlg).addEventListener('change', up);
-    if (dlg.open) showAppDialog(dlg);
+    if (dlg.open) showAppDialog(dlg, null, { focus: true });
   }
 
   /* ---------- v5.8 明細CSVの読み込み ----------
@@ -968,7 +981,7 @@
     const w = L.monthlyDates(Number(card.withdrawDay), L.addDays(m + '-01', -1), L.monthLast(m))[0];
     return ymLabel(m) + (w ? `（${md(w)} 引き落とし）` : '');
   }
-  function drawCsv() {
+  function drawCsv(opts) {
     const dlg = $('#dlg'), card = csvCard(); if (!card) return;
     let h = '';
     if (csv.step === 'card') {
@@ -1048,10 +1061,11 @@
       const mb = $('[data-act=csv-more]', dlg); mb.addEventListener('click', (ev) => { ev.stopPropagation(); const m = $('.csv-more', dlg); m.hidden = !m.hidden; mb.setAttribute('aria-expanded', String(!m.hidden)); });
     }
     const cs = $('#csvCard', dlg); if (cs) cs.addEventListener('change', () => { csv.cardId = cs.value; });
-    const ms = $('#csvMonth', dlg); if (ms) ms.addEventListener('change', () => { csv.month = ms.value; drawCsv(); });
-    ['mDate', 'mMer', 'mAmt'].forEach((k) => { const s = $('#' + k, dlg); if (s) s.addEventListener('change', () => { const mp = csv.an.map; mp[{ mDate: 'date', mMer: 'merchant', mAmt: 'amount' }[k]] = Number(s.value); mp.alt = -1; drawCsv(); }); });
+    const ms = $('#csvMonth', dlg); if (ms) ms.addEventListener('change', () => { csv.month = ms.value; drawCsv(); const el = $('#csvMonth', dlg); if (el) try { el.focus(); } catch (_) {} });
+    ['mDate', 'mMer', 'mAmt'].forEach((k) => { const s = $('#' + k, dlg); if (s) s.addEventListener('change', () => { const mp = csv.an.map; mp[{ mDate: 'date', mMer: 'merchant', mAmt: 'amount' }[k]] = Number(s.value); mp.alt = -1; drawCsv(); const el = $('#' + k, dlg); if (el) try { el.focus(); } catch (_) {} }); });
     const fi = $('#csvfile', dlg); if (fi) fi.addEventListener('change', () => { if (fi.files[0]) readCsvFile(fi.files[0]); fi.value = ''; });
-    if (dlg.open) showAppDialog(dlg);
+    // 手順の切り替えだけ見出しへフォーカス。select 変更の再描画はフォーカスしない（呼び出し側で select に戻す）
+    if (dlg.open) showAppDialog(dlg, null, { focus: !!(opts && opts.focus) });
   }
   const csvFail = (msg) => askConfirm({ title: '読み込めませんでした', message: msg, okLabel: 'OK', noCancel: true, danger: false });
   async function readCsvFile(file) {
@@ -1063,9 +1077,9 @@
     if (!an.table.length) return csvFail('CSVの中身が見つかりませんでした。カード会社の「利用明細」のCSVファイルか確認してください。');
     if (!an.ok && !an.table.some((r) => r.some((c) => CI.parseDate(c))) && an.table.some((r) => r.some((c) => CI.matchHead('date', c) >= 0) && r.some((c) => CI.matchHead('amount', c) >= 0))) return csvFail('明細が0件でした。日付の入った明細の行が見つかりません。見出しだけのファイルや、まだ利用のない月のCSVではないか確認してください。');
     Object.assign(csv, { file: file.name || 'CSV', encoding: dec.encoding, text: dec.text, an });
-    if (!an.ok) { csv.step = 'map'; if (an.map.date < 0) Object.assign(an.map, { date: 0, merchant: 1, amount: 2, header: -1, alt: -1 }); drawCsv(); return; }
+    if (!an.ok) { csv.step = 'map'; if (an.map.date < 0) Object.assign(an.map, { date: 0, merchant: 1, amount: 2, header: -1, alt: -1 }); drawCsv({ focus: true }); return; }
     csv.month = CI.guessBillMonth(csvCard(), an.rows, todayStr());
-    csv.step = 'preview'; drawCsv();
+    csv.step = 'preview'; drawCsv({ focus: true });
   }
   async function applyCsv() {
     const card = csvCard(), dlg = $('#dlg'); if (!card || !csv.an) return;
@@ -1226,18 +1240,22 @@
       case 'enter': openEnter(t.dataset.kind, id, t.dataset.month); break;
       case 'actuals': if (ui.pastHint && ui.pastHint.id === id) ui.pastHint = null; openActuals(t.dataset.kind, id); break;
       case 'close-pasthint': ui.pastHint = null; render(); break;
-      case 'close-dlg': $('#dlg').close(); break;
+      case 'close-dlg': $('#dlg').close(); break; // close イベントで render
       case 'csv-open': openCsv(id); break;
       case 'csv-pick': { const fi = $('#csvfile'); if (fi) fi.click(); break; }
-      case 'csv-back': if (csv) { csv.step = t.dataset.to; drawCsv(); } break;
-      case 'csv-map': if (csv) { csv.step = 'map'; drawCsv(); } break;
-      case 'csv-map-ok': if (csv) { const mp = csv.an.map; csv.an = CsvImport.analyze(csv.text, { header: mp.header, date: mp.date, merchant: mp.merchant, amount: mp.amount, alt: mp.alt }); csv.an.map.headers = mp.headers; csv.month = CsvImport.guessBillMonth(csvCard(), csv.an.rows, todayStr()); csv.step = 'preview'; drawCsv(); } break;
-      case 'csv-next': if (csv) { csv.step = 'actions'; drawCsv(); } break;
+      case 'csv-back': if (csv) { csv.step = t.dataset.to; drawCsv({ focus: true }); } break;
+      case 'csv-map': if (csv) { csv.step = 'map'; drawCsv({ focus: true }); } break;
+      case 'csv-map-ok': if (csv) { const mp = csv.an.map; csv.an = CsvImport.analyze(csv.text, { header: mp.header, date: mp.date, merchant: mp.merchant, amount: mp.amount, alt: mp.alt }); csv.an.map.headers = mp.headers; csv.month = CsvImport.guessBillMonth(csvCard(), csv.an.rows, todayStr()); csv.step = 'preview'; drawCsv({ focus: true }); } break;
+      case 'csv-next': if (csv) { csv.step = 'actions'; drawCsv({ focus: true }); } break;
       case 'csv-apply': if (csv) applyCsv(); break;
       case 'am-prev': case 'am-next': {
         const am = $('#am'), lbl = $('#amLbl'), sub = $('#amSub'); if (!am || !actCtx) break;
-        const max = addMonths(L.monthKey(todayStr()), 1), min = addMonths(L.monthKey(todayStr()), -36);
-        let ym = addMonths(am.value || L.monthKey(todayStr()), t.dataset.act === 'am-prev' ? -1 : 1);
+        const t0 = todayStr();
+        const nextProv = L.genEvents(state, L.addDays(t0, -1), L.addDays(t0, 120)).find((e) => e.refKind === actCtx.kind && e.refId === actCtx.id && !e.confirmed);
+        const defM = nextProv ? nextProv.month : L.monthKey(t0);
+        const nextM = addMonths(L.monthKey(t0), 1);
+        const max = defM > nextM ? defM : nextM, min = addMonths(L.monthKey(t0), -12);
+        let ym = addMonths(am.value || L.monthKey(t0), t.dataset.act === 'am-prev' ? -1 : 1);
         if (ym > max) ym = max; if (ym < min) ym = min;
         am.value = ym;
         if (lbl) lbl.textContent = amShortLabel(ym);
@@ -1260,7 +1278,20 @@
         if (!isFinite(v)) { toast('金額を入力してください'); break; }
         if (v < 0) { toast(NEG_MSG); break; }
         const ctx = actCtx;
-        confirmOverwrite(ctx.kind, ctx.id, m, v).then((ok) => { if (!ok || actCtx !== ctx) return; if (setActual(ctx.kind, ctx.id, m, v)) { drawActuals(); toast('実績を保存しました'); } });
+        confirmOverwrite(ctx.kind, ctx.id, m, v).then((ok) => {
+          if (!ok || actCtx !== ctx) return;
+          if (!setActual(ctx.kind, ctx.id, m, v)) return;
+          // 直前の未入力月へ（入力済みは飛ばす）。下限より前には行かず、無ければ保存した月のまま
+          const min = addMonths(L.monthKey(todayStr()), -12);
+          let dest = null;
+          for (let ym = addMonths(m, -1); ym >= min; ym = addMonths(ym, -1)) {
+            if (!(state.actuals || {})[L.actualKey(ctx.kind, ctx.id, ym)]) { dest = ym; break; }
+          }
+          const filled = !dest;
+          actCtx.keepMonth = dest || m;
+          drawActuals();
+          toast(amShortLabel(m) + 'を保存しました' + (filled ? '（これより前はすべて入力済みです）' : ''));
+        });
         break;
       }
       case 'act-del': {

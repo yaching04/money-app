@@ -83,9 +83,9 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   ck('無効の › は薄いグレー', /148|149|150|160|163|176|148,\s*163,\s*184|rgb\(148/.test(maxed.color) || maxed.color === 'rgb(148, 163, 184)');
   ck('12月の引き落とし日 [' + maxed.sub + ']', maxed.sub === '12/27 引き落とし' || /12\/\d+ 引き落とし/.test(maxed.sub));
 
-  // 下限付近：36か月戻して ‹ 無効
+  // 下限付近：12か月戻して ‹ 無効
   await p.evaluate(() => {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 20; i++) {
       const b = document.querySelector('#dlg [data-act=am-prev]');
       if (!b || b.disabled) break;
       b.click();
@@ -97,7 +97,7 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
     const cs = getComputedStyle(b);
     return { am: document.getElementById('am').value, dis: b.disabled, color: cs.color };
   });
-  ck('‹ は36か月前で無効 [' + mined.am + ']', mined.dis === true && mined.am === '2023-11');
+  ck('‹ は12か月前で無効 [' + mined.am + ']', mined.dis === true && mined.am === '2025-11');
   ck('無効の ‹ は薄いグレー', /148|163|184/.test(mined.color));
 
   await p.screenshot({ path: S + 'v6010-actuals-open.png' });
@@ -115,7 +115,7 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   await sleep(200);
   await p.screenshot({ path: S + 'v6010-actuals-open.png' });
 
-  ck('キャッシュ名 v6010', require('fs').readFileSync(__dirname + '/../sw.js', 'utf8').includes("CACHE = 'money-app-v6010'"));
+  ck('キャッシュ名 v6010', require('fs').readFileSync(__dirname + '/../sw.js', 'utf8').includes("CACHE = 'money-app-v6011'"));
   ck('JSエラーなし', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL OK');

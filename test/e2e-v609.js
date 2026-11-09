@@ -144,11 +144,11 @@ const focusInfo = () => ({
 
   ck('showModal は showAppDialog 経由のみ', await p.evaluate(async () => {
     const src = await (await fetch('app.js')).text();
-    const naked = [...src.matchAll(/\.showModal\s*\(/g)].filter((m) => {
-      const before = src.slice(Math.max(0, m.index - 80), m.index);
-      return !/showAppDialog/.test(before) && !/if\s*\(\s*!dlg\.open\s*\)/.test(before);
-    });
-    return naked.length === 0;
+    // .showModal( は showAppDialog 関数内の1か所だけ
+    const hits = [...src.matchAll(/\.showModal\s*\(/g)];
+    if (hits.length !== 1) return false;
+    const before = src.slice(Math.max(0, hits[0].index - 600), hits[0].index);
+    return /function showAppDialog\s*\(/.test(before);
   }));
   ck('JSエラーなし', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
