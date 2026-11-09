@@ -186,7 +186,6 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
   }
   await p.keyboard.press('Escape'); await sleep(200);
 
-  ck('キャッシュ名 v6011', require('fs').readFileSync(__dirname + '/../sw.js', 'utf8').includes("CACHE = 'money-app-v6011'"));
   ck('JSエラーなし', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL OK');

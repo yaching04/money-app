@@ -926,9 +926,10 @@
     if (cur < amMin) cur = amMin;
     const initAmt = initialOf(kind, it);
     const ph = nextProv ? Math.round(nextProv.amount) : (initAmt ? Math.round(initAmt) : '');
+    const helpBtn = ` <button type="button" class="q act-q" data-act="act-avg-help" aria-label="仮の金額の説明" aria-expanded="false">？</button>`;
     const top = nextProv
-      ? `次回の仮の金額：<b>仮 ${yenAbs(nextProv.amount)}</b> <button type="button" class="q" data-act="act-avg-help" aria-label="仮の金額の説明" aria-expanded="false">？</button>`
-      : '次回の予定はありません';
+      ? `次回の仮の金額：<b>仮 ${yenAbs(nextProv.amount)}</b>${helpBtn}`
+      : `次回の予定はありません${helpBtn}`;
     const help = `仮の金額＝直近(最大)3回の実績の平均。実績が無いうちは初期見込み額（${yenAbs(initAmt)}）です。`;
     dlg.innerHTML = `<div class="sheet act-sheet"><h2 id="dlgT">実績の記録：${esc(it.name)}</h2>
       <p class="hint act-top">${top}</p>
@@ -936,7 +937,7 @@
       <div class="amnav-wrap">
         <div class="amnav" role="group" aria-label="月">
           <button type="button" class="amnav-b" data-act="am-prev" aria-label="前の月"${cur <= amMin ? ' disabled' : ''}>‹</button>
-          <span class="amnav-l" id="amLbl">${amShortLabel(cur)}</span>
+          <span class="amnav-l" id="amLbl" tabindex="-1">${amShortLabel(cur)}</span>
           <button type="button" class="amnav-b" data-act="am-next" aria-label="次の月"${cur >= amMax ? ' disabled' : ''}>›</button>
         </div>
         <div class="amnav-sub" id="amSub">${amSubText(kind, cur)}</div>
@@ -1264,6 +1265,15 @@
         if (nb) nb.disabled = ym >= max;
         if (pb) pb.disabled = ym <= min;
         am.dispatchEvent(new Event('change', { bubbles: true }));
+        // 押した矢印が disabled になるとフォーカスが BODY へ落ちるので、もう一方か月ラベルへ移す
+        const pressed = t.dataset.act === 'am-prev' ? pb : nb;
+        const other = t.dataset.act === 'am-prev' ? nb : pb;
+        if (pressed && pressed.disabled) {
+          try {
+            if (other && !other.disabled) other.focus();
+            else if (lbl) { lbl.setAttribute('tabindex', '-1'); lbl.focus({ preventScroll: true }); }
+          } catch (_) {}
+        }
         break;
       }
       case 'act-avg-help': {

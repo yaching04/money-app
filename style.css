@@ -536,7 +536,10 @@ body.has-upd .toast{bottom:calc(90px + var(--upd-h, 56px) + env(safe-area-inset-
 .sheet h2:focus,.cfm h2:focus,h2[tabindex="-1"]:focus{outline:none;box-shadow:none}
 /* v6.0.10: 実績の月ステッパー（枠なし・コンパクト） */
 .act-sheet .act-top{margin:0 0 8px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font-size:13px}
-.act-sheet .act-top .q{width:24px;height:24px;color:var(--sub);border-color:#94a3b8;font-size:13px}
+/* 見た目は24px円のまま、タップ領域だけ44×44 */
+.act-sheet .act-top .q.act-q{width:44px;height:44px;border:0;background:none;color:var(--sub);font-size:13px;font-weight:700;position:relative;flex:none;padding:0;line-height:1}
+.act-sheet .act-top .q.act-q::before{content:"";position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border:1px solid #94a3b8;border-radius:50%;pointer-events:none;box-sizing:border-box}
+.amnav-l:focus{outline:none}
 .act-sheet .act-avg-help{margin:0 0 8px;font-size:13px;color:var(--sub)}
 .amnav-wrap{text-align:center;margin:0 0 12px}
 .amnav{display:inline-flex;align-items:center;justify-content:center;gap:0;min-height:44px}
