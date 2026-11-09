@@ -605,6 +605,13 @@
     });
     if (o.setup) o.setup(f);
     dlg.showModal();
+    // v6.0.8: ダイアログを開くと先頭の<select>（支払いの「種類」など）にフォーカスが当たり、
+    // iPhoneではネイティブの選択肢（ホイール）が一気に出てしまう。autofocus付き欄がなければ
+    // 見出しへフォーカスを移し、閉じた見た目のまま・タップしたときだけ開くようにする。
+    if (!f.querySelector('[autofocus]')) {
+      const h = f.querySelector('h2');
+      if (h) { h.setAttribute('tabindex', '-1'); try { h.focus({ preventScroll: true }); } catch (_) {} }
+    }
   }
   const CANCEL = { cancel: true };
   /** 既存の実績を別の金額で上書きするときは必ず確認する（同じ金額・実績なしはそのまま） */

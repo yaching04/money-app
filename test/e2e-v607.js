@@ -105,7 +105,6 @@ const base = (o) => Object.assign({ version: 2, accounts: [{ id: 'a1', name: '�
     return { y0, y1: scrollY, hero: !!document.querySelector('.hero, .nextst') };
   });
   ck('ホーム先頭: 帯表示でも scrollY=0・次回が見える位置 ' + JSON.stringify(top), top.y0 === 0 && top.y1 === 0 && top.hero);
-  ck('キャッシュ名 v607', require('fs').readFileSync(__dirname + '/../sw.js', 'utf8').includes("CACHE = 'money-app-v607'"));
   ck('自動スクロール関数なし', !/clearUpdObscured/.test(require('fs').readFileSync(__dirname + '/../app.js', 'utf8')));
   ck('JSエラーなし', !errs.length, errs.join('|'));
   await b.close(); console.log(fails ? 'FAILS ' + fails : 'ALL OK'); process.exit(fails ? 1 : 0);
