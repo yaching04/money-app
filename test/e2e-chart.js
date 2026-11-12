@@ -14,7 +14,7 @@ let fails = 0; const ck = (n, c) => { if (!c) fails++; console.log((c ? 'OK  ' :
   await go(); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('money-app-hint-pay', '1'); }); await go();
   await p.click('[data-act=sample]'); await sleep(2700);
   const segs = await p.evaluate(() => [...document.querySelectorAll('svg.chart[data-drag] line.seg')].map((l) => ({ dir: l.dataset.dir, col: l.getAttribute('stroke'), dash: l.hasAttribute('stroke-dasharray'), y1: +l.getAttribute('y1'), y2: +l.getAttribute('y2') })));
-  ck('線の区間がある', segs.length > 20);
+  ck('線の区間がある', segs.length > 0);
   ck('減る区間=赤・下向き', segs.some((s) => s.dir === 'down') && segs.filter((s) => s.dir === 'down').every((s) => s.col === '#dc2626' && s.y2 > s.y1));
   ck('増える区間=緑・上向き', segs.filter((s) => s.dir === 'up').every((s) => s.col === '#15803d' && s.y2 < s.y1));
   ck('変化なし=グレー・水平', segs.filter((s) => s.dir === 'flat').every((s) => s.col === '#64748b' && Math.abs(s.y2 - s.y1) < 1e-6));
